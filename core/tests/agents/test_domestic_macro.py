@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
+from datetime import date
 from math import nan
 
 import pytest
@@ -122,6 +124,7 @@ def test_domestic_macro_emits_ordered_computed_evidence_and_weighted_score() -> 
     )
     assert tuple(item.value for item in vote.evidence) == (0.00, -0.004, -0.02)
     assert tuple(item.source for item in vote.evidence) == ("computed", "computed", "computed")
+    assert tuple(item.as_of for item in vote.evidence) == (date.min, date.min, date.min)
 
 
 @pytest.mark.parametrize(
@@ -148,3 +151,42 @@ def test_domestic_macro_rejects_leakage_and_non_whitelisted_inputs(
 ) -> None:
     with pytest.raises(LeakageError):
         _ = make_agent().vote(row)
+
+
+def test_domestic_macro_rejects_non_finite_weight() -> None:
+    with pytest.raises(ValueError, match="weight must be finite"):
+        _ = make_agent(weight=nan)
+
+
+def test_domestic_macro_requires_all_features() -> None:
+    with pytest.raises(ValueError, match="missing required feature: usd_krw_return_5d"):
+        _ = make_agent().vote(
+            {
+                "bok_base_rate_change_30d": 0.00,
+                "kr_bond_yield_change_30d": -0.02,
+            }
+        )
+
+
+def test_domestic_macro_rejects_non_numeric_feature_values() -> None:
+    with pytest.raises(ValueError, match="usd_krw_return_5d must be numeric"):
+        _ = make_agent().vote(
+            {
+                "bok_base_rate_change_30d": 0.00,
+                "usd_krw_return_5d": "0.001",
+                "kr_bond_yield_change_30d": -0.02,
+            }
+        )
+
+
+def test_domestic_macro_requires_all_thresholds() -> None:
+    thresholds = deepcopy(dict(make_rule_config().thresholds))
+    del thresholds["usdkrw_return_5d_up_max"]
+
+    agent = DomesticMacroAgent(
+        rule_config=AgentRuleConfig(rule_version="domestic_macro@1.0.0", thresholds=thresholds),
+        weight=0.20,
+    )
+
+    with pytest.raises(ValueError, match="missing threshold: usdkrw_return_5d_up_max"):
+        _ = agent.vote(make_row(bok_change=0.00, usdkrw_5d=-0.004, bond_change=-0.02))

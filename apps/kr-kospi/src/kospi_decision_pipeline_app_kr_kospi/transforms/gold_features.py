@@ -147,24 +147,6 @@ def _percentile_rank(values: Sequence[float], current_value: float) -> float:
     return count / len(values)
 
 
-def _rolling_percentile(values: Sequence[float], index: int, *, window: int) -> float:
-    window_values = values[(index - window + 1) : index + 1]
-    return _percentile_rank(window_values, window_values[-1])
-
-
-def _rolling_percentile_ignore_none(
-    values: Sequence[float | None],
-    index: int,
-    *,
-    window: int,
-) -> float:
-    filtered = [value for value in values[(index - window + 1) : index + 1] if value is not None]
-    current_value = values[index]
-    if current_value is None or not filtered:
-        raise ValueError("current rolling value must be present")
-    return _percentile_rank(filtered, current_value)
-
-
 def _required_history_for_realized_vol_percentile() -> int:
     return REALIZED_VOL_WINDOW + TRADING_DAYS_FOR_PERCENTILE
 
@@ -384,8 +366,7 @@ class GoldFeatureBuilder:
                 / 14.0,
             }
             assert_no_forbidden_gold_columns(row.keys())
-            if valid_segment[-1].as_of_date >= requested_start:
-                rows.append(row)
+            rows.append(row)
         return rows
 
 

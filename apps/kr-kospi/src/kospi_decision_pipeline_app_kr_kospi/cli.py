@@ -108,7 +108,7 @@ def run_build_features_command(
         )
         print(f"wrote {output_path.name} sha256={gold_sha256(output_path)}")
         return 0
-    return 0
+    raise ValueError(f"unsupported feature layer: {layer}")
 
 
 class _CliArgs(argparse.Namespace):

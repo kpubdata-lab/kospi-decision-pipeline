@@ -520,6 +520,60 @@ def test_gold_feature_builder_raises_for_invalid_float_input(tmp_path: Path) -> 
         )
 
 
+def test_gold_feature_builder_raises_for_boolean_float_input(tmp_path: Path) -> None:
+    days = _trading_days(272)
+    silver_root = tmp_path / "silver"
+    _build_complete_silver_history(silver_root, days)
+    target_date = days[-1]
+    _write_silver_partition(
+        silver_root,
+        "usd_krw",
+        target_date,
+        {
+            "as_of_date": target_date,
+            "source_name": "ecos",
+            "source_series_id": "usd_krw",
+            "fetched_at": "2024-01-10T09:00:00+00:00",
+            "usd_krw_rate": True,
+        },
+    )
+
+    with pytest.raises(InvalidGoldInputError, match="usd_krw_rate"):
+        _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
+            silver_root=silver_root,
+            start=days[-1],
+            end=days[-1],
+        )
+
+
+def test_gold_feature_builder_accepts_integer_float_input(tmp_path: Path) -> None:
+    days = _trading_days(272)
+    silver_root = tmp_path / "silver"
+    _build_complete_silver_history(silver_root, days)
+    target_date = days[-1]
+    _write_silver_partition(
+        silver_root,
+        "usd_krw",
+        target_date,
+        {
+            "as_of_date": target_date,
+            "source_name": "ecos",
+            "source_series_id": "usd_krw",
+            "fetched_at": "2024-01-10T09:00:00+00:00",
+            "usd_krw_rate": 1500,
+        },
+    )
+
+    output_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
+        silver_root=silver_root,
+        start=days[-1],
+        end=days[-1],
+    )
+
+    rows = _read_rows(output_path)
+    assert rows[0]["usd_krw_close"] == pytest.approx(1500.0)
+
+
 def test_gold_feature_builder_raises_for_invalid_date_input(tmp_path: Path) -> None:
     days = _trading_days(272)
     silver_root = tmp_path / "silver"
@@ -568,6 +622,33 @@ def test_gold_feature_builder_raises_for_invalid_text_input(tmp_path: Path) -> N
     )
 
     with pytest.raises(InvalidGoldInputError, match="maturity_code"):
+        _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
+            silver_root=silver_root,
+            start=days[-1],
+            end=days[-1],
+        )
+
+
+def test_gold_feature_builder_raises_for_bond_yield_as_of_date_mismatch(tmp_path: Path) -> None:
+    days = _trading_days(272)
+    silver_root = tmp_path / "silver"
+    _build_complete_silver_history(silver_root, days)
+    target_date = days[-1]
+    _write_silver_partition(
+        silver_root,
+        "bond_yield",
+        target_date,
+        {
+            "as_of_date": days[-2],
+            "source_name": "ecos",
+            "source_series_id": "bond_yield",
+            "fetched_at": "2024-01-10T09:00:00+00:00",
+            "maturity_code": "3Y",
+            "yield_rate_pct": Decimal("4.00"),
+        },
+    )
+
+    with pytest.raises(InvalidGoldInputError, match="as_of_date"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
             start=days[-1],

@@ -449,6 +449,20 @@ def test_run_build_features_command_rejects_unsupported_dataset() -> None:
         )
 
 
+def test_run_build_features_command_rejects_unsupported_layer() -> None:
+    with pytest.raises(ValueError, match="unsupported feature layer"):
+        _ = run_build_features_command(
+            layer="unsupported",
+            source="",
+            dataset="",
+            start="2024-01-02",
+            end="2024-01-03",
+            bronze_dir="tmp/bronze",
+            silver_dir="tmp/silver",
+            output_dir="tmp/output",
+        )
+
+
 def test_parse_date_and_fixture_root_helpers() -> None:
     assert parse_date("2024-01-02").isoformat() == "2024-01-02"
     assert (fixtures_root() / "krx" / "kospi_index.json").is_file()

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date
+import importlib
 from pathlib import Path
-import socket
-from typing import TypeVar
+import sys
+from typing import Protocol, TypeVar
 
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi import connectors
+from kospi_decision_pipeline_app_kr_kospi.connectors.base import SourceMetadata
 from kospi_decision_pipeline_app_kr_kospi.connectors.data_portal import (
     DataPortalConnector,
     DataPortalSampleRow,
@@ -44,13 +46,18 @@ START_DATE = date(2024, 1, 2)
 END_DATE = date(2024, 1, 4)
 
 
-def assert_metadata(rows: tuple[object, ...], source_name: str, source_series_id: str) -> None:
+class HasMetadata(Protocol):
+    @property
+    def metadata(self) -> SourceMetadata: ...
+
+
+def assert_metadata(rows: tuple[HasMetadata, ...], source_name: str, source_series_id: str) -> None:
     assert rows
-    first_row = rows[0]
-    metadata = getattr(first_row, "metadata")
-    assert metadata.source_name == source_name
-    assert metadata.source_series_id == source_series_id
-    assert metadata.fetched_at.isoformat() == "2024-01-10T09:00:00+00:00"
+    for row in rows:
+        metadata = row.metadata
+        assert metadata.source_name == source_name
+        assert metadata.source_series_id == source_series_id
+        assert metadata.fetched_at.isoformat() == "2024-01-10T09:00:00+00:00"
 
 
 def assert_deterministic(fetcher: Callable[[], tuple[RowT, ...]]) -> tuple[RowT, ...]:
@@ -135,12 +142,7 @@ def test_fixture_data_portal_connector_satisfies_protocol_and_returns_metadata()
     assert_metadata(rows, source_name="data_portal", source_series_id="sample_dataset")
 
 
-def test_fixture_connectors_do_not_require_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_connect(self: socket.socket, address: object) -> None:
-        raise AssertionError(f"unexpected network access: {address!r}")
-
-    monkeypatch.setattr(socket.socket, "connect", fail_connect)
-
+def test_fixture_connectors_do_not_require_network() -> None:
     krx_connector = FixtureKrxConnector(FIXTURES_ROOT)
     ecos_connector = FixtureEcosConnector(FIXTURES_ROOT)
     kosis_connector = FixtureKosisConnector(FIXTURES_ROOT)
@@ -162,3 +164,25 @@ def test_connectors_package_exports_fixture_connectors() -> None:
     assert connectors.FixtureEcosConnector is FixtureEcosConnector
     assert connectors.FixtureKosisConnector is FixtureKosisConnector
     assert connectors.FixtureDataPortalConnector is FixtureDataPortalConnector
+
+
+def test_connector_modules_do_not_read_fixtures_at_import_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    imported_modules = (
+        "kospi_decision_pipeline_app_kr_kospi.connectors.base",
+        "kospi_decision_pipeline_app_kr_kospi.connectors.krx",
+        "kospi_decision_pipeline_app_kr_kospi.connectors.ecos",
+        "kospi_decision_pipeline_app_kr_kospi.connectors.kosis",
+        "kospi_decision_pipeline_app_kr_kospi.connectors.data_portal",
+        "kospi_decision_pipeline_app_kr_kospi.connectors.fixture",
+    )
+
+    def fail_read_text(self: Path, encoding: str = "utf-8") -> str:
+        raise AssertionError(f"fixture file should not be read at import time: {self} ({encoding})")
+
+    monkeypatch.setattr(Path, "read_text", fail_read_text)
+
+    for module_name in imported_modules:
+        sys.modules.pop(module_name, None)
+        importlib.import_module(module_name)

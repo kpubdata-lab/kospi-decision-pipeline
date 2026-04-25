@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 import json
 from pathlib import Path
-from typing import Callable, TypeVar, cast
+from typing import Callable, TypeVar, cast, final
 
 from .base import SourceMetadata
 from .data_portal import DataPortalSampleRow
@@ -23,13 +23,16 @@ class _FixturePayload:
 RowT = TypeVar("RowT")
 
 
+@final
 class _FixtureLoader:
+    _fixtures_root: Path
+
     def __init__(self, fixtures_root: Path) -> None:
         self._fixtures_root = fixtures_root
 
     def load(self, source_name: str, dataset_name: str) -> _FixturePayload:
         fixture_path = self._fixtures_root / source_name / f"{dataset_name}.json"
-        payload: dict[str, object] = json.loads(fixture_path.read_text(encoding="utf-8"))
+        payload = cast(dict[str, object], json.loads(fixture_path.read_text(encoding="utf-8")))
         metadata = SourceMetadata(
             source_name=str(payload["source_name"]),
             source_series_id=str(payload["source_series_id"]),
@@ -60,7 +63,10 @@ def _filter_by_date_range(
     return tuple(row for row in rows if start <= date_getter(row) <= end)
 
 
+@final
 class FixtureKrxConnector:
+    _loader: _FixtureLoader
+
     def __init__(self, fixtures_root: Path) -> None:
         self._loader = _FixtureLoader(fixtures_root)
 
@@ -110,7 +116,10 @@ class FixtureKrxConnector:
         return _filter_by_date_range(rows, lambda row: row.trade_date, start, end)
 
 
+@final
 class FixtureEcosConnector:
+    _loader: _FixtureLoader
+
     def __init__(self, fixtures_root: Path) -> None:
         self._loader = _FixtureLoader(fixtures_root)
 
@@ -152,7 +161,10 @@ class FixtureEcosConnector:
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
 
 
+@final
 class FixtureKosisConnector:
+    _loader: _FixtureLoader
+
     def __init__(self, fixtures_root: Path) -> None:
         self._loader = _FixtureLoader(fixtures_root)
 
@@ -184,7 +196,10 @@ class FixtureKosisConnector:
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
 
 
+@final
 class FixtureDataPortalConnector:
+    _loader: _FixtureLoader
+
     def __init__(self, fixtures_root: Path) -> None:
         self._loader = _FixtureLoader(fixtures_root)
 

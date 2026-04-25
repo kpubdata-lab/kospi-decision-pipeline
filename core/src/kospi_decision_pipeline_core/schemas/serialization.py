@@ -59,13 +59,12 @@ def to_jsonl_line(obj: EvidenceItem | AgentVote | DecisionResult | BacktestRow) 
     return json.dumps(_to_json_value(obj), separators=(",", ":"), ensure_ascii=False)
 
 
-def to_csv_row(
-    obj: BacktestRow | DecisionResult | AgentVote | EvidenceItem,
-    fields: tuple[str, ...],
-) -> dict[str, str]:
+def to_csv_row(obj: BacktestRow, fields: tuple[str, ...]) -> dict[str, str]:
     if not isinstance(obj, BacktestRow):
         raise ValueError("to_csv_row supports only flat BacktestRow values")
-    return {field: _backtest_field_string(obj, field) for field in fields}
+    if fields != BACKTEST_CSV_FIELDS:
+        raise ValueError("fields must equal BACKTEST_CSV_FIELDS")
+    return {field: _backtest_field_string(obj, field) for field in BACKTEST_CSV_FIELDS}
 
 
 def parse_evidence_item(line: str) -> EvidenceItem:
@@ -240,6 +239,4 @@ def _backtest_field_string(row: BacktestRow, field: str) -> str:
         return row.ground_truth
     if field == "next_day_return":
         return str(row.next_day_return)
-    if field == "hit":
-        return "true" if row.hit else "false"
-    raise ValueError(f"unknown CSV field: {field}")
+    return "true" if row.hit else "false"

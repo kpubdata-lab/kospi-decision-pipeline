@@ -138,7 +138,7 @@ def test_backtest_csv_fields_and_row_are_stable() -> None:
 
 def test_to_csv_row_rejects_nested_schema_objects() -> None:
     with pytest.raises(ValueError, match="flat BacktestRow"):
-        _ = to_csv_row(make_decision_result(), BACKTEST_CSV_FIELDS)
+        _ = to_csv_row(cast(BacktestRow, cast(object, make_decision_result())), BACKTEST_CSV_FIELDS)
 
 
 def test_parse_helpers_reject_invalid_payloads() -> None:
@@ -220,6 +220,6 @@ def test_parse_helpers_reject_invalid_scalar_types(
         _ = parser(payload)
 
 
-def test_to_csv_row_rejects_unknown_fields() -> None:
-    with pytest.raises(ValueError, match="unknown CSV field"):
-        _ = to_csv_row(make_backtest_row(), BACKTEST_CSV_FIELDS + ("votes",))
+def test_to_csv_row_rejects_non_stable_fields() -> None:
+    with pytest.raises(ValueError, match="fields must equal BACKTEST_CSV_FIELDS"):
+        _ = to_csv_row(make_backtest_row(), BACKTEST_CSV_FIELDS[::-1])

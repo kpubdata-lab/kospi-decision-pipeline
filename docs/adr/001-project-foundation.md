@@ -59,6 +59,11 @@ We adopt the following project foundation for v0.1:
 - v0.1 will be intentionally narrow and may skip many days.
 - Some potentially predictive signals are deferred to later versions.
 
+## Disclaimer
+> 본 프로젝트는 연구 및 교육 목적의 실험 도구이며, 투자 권유 또는 금융 자문이 아닙니다.
+>
+> This project is an experimental research and educational tool. It is not investment advice or financial advisory.
+
 ## Related
 - `docs/spec.md`
 - `apps/kr-kospi/config/agents.yaml`

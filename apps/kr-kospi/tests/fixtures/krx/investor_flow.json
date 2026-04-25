@@ -1,0 +1,12 @@
+{
+  "source_name": "krx",
+  "source_series_id": "investor_flow",
+  "fetched_at": "2024-01-10T09:00:00+00:00",
+  "rows": [
+    {"trade_date": "2024-01-01", "individual_net_buy": "1200000000", "foreign_net_buy": "-800000000", "institution_net_buy": "-400000000"},
+    {"trade_date": "2024-01-02", "individual_net_buy": "-400000000", "foreign_net_buy": "700000000", "institution_net_buy": "-300000000"},
+    {"trade_date": "2024-01-03", "individual_net_buy": "300000000", "foreign_net_buy": "-100000000", "institution_net_buy": "-200000000"},
+    {"trade_date": "2024-01-04", "individual_net_buy": "-900000000", "foreign_net_buy": "500000000", "institution_net_buy": "400000000"},
+    {"trade_date": "2024-01-05", "individual_net_buy": "150000000", "foreign_net_buy": "-250000000", "institution_net_buy": "100000000"}
+  ]
+}

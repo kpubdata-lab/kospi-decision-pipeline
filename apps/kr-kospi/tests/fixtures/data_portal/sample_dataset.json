@@ -1,0 +1,10 @@
+{
+  "source_name": "data_portal",
+  "source_series_id": "sample_dataset",
+  "fetched_at": "2024-01-10T09:00:00+00:00",
+  "rows": [
+    {"value_date": "2024-01-03", "metric_name": "public_signal", "metric_value": "101.5"},
+    {"value_date": "2024-01-04", "metric_name": "public_signal", "metric_value": "102.0"},
+    {"value_date": "2024-01-05", "metric_name": "public_signal", "metric_value": "103.2"}
+  ]
+}

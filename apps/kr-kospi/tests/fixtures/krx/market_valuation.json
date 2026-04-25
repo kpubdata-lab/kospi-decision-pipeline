@@ -1,0 +1,12 @@
+{
+  "source_name": "krx",
+  "source_series_id": "market_valuation",
+  "fetched_at": "2024-01-10T09:00:00+00:00",
+  "rows": [
+    {"trade_date": "2024-01-01", "market_capitalization": "2100000000000000", "trailing_per": "10.2", "trailing_pbr": "0.92"},
+    {"trade_date": "2024-01-02", "market_capitalization": "2105000000000000", "trailing_per": "10.3", "trailing_pbr": "0.93"},
+    {"trade_date": "2024-01-03", "market_capitalization": "2102000000000000", "trailing_per": "10.25", "trailing_pbr": "0.93"},
+    {"trade_date": "2024-01-04", "market_capitalization": "2098000000000000", "trailing_per": "10.18", "trailing_pbr": "0.92"},
+    {"trade_date": "2024-01-05", "market_capitalization": "2111000000000000", "trailing_per": "10.35", "trailing_pbr": "0.94"}
+  ]
+}

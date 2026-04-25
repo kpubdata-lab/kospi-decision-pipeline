@@ -78,7 +78,7 @@ def _table_from_pylist(rows: list[dict[str, object]]) -> _ArrowTable:
     factory = cast(_ArrowTableFactory, pa.Table)
     if rows:
         return factory.from_pylist(rows)
-    return factory.from_pylist([cast(dict[str, object], EMPTY_ROW)]).slice(0, 0)
+    return factory.from_pylist([EMPTY_ROW]).slice(0, 0)
 
 
 def _float_value(row: dict[str, object], field_name: str) -> float | None:
@@ -110,6 +110,7 @@ def _target_direction_label(
 
 
 def _read_gold_rows(gold_dir: Path) -> list[dict[str, object]]:
+    parquet_paths: tuple[Path, ...]
     if gold_dir.is_file():
         parquet_paths = (gold_dir,)
     else:

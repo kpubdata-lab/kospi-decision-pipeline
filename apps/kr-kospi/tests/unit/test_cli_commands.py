@@ -36,6 +36,110 @@ def test_cli_main_returns_zero_for_run(capsys) -> None:
     assert capsys.readouterr().out.strip() == "run: not yet implemented"
 
 
+def test_cli_main_runs_fixture_ingest(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_ingest_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_ingest_command",
+        fake_run_ingest_command,
+    )
+
+    assert (
+        main(
+            [
+                "ingest",
+                "--source",
+                "krx",
+                "--dataset",
+                "kospi_index",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-04",
+                "--out",
+                "tmp/bronze",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "source": "krx",
+        "dataset": "kospi_index",
+        "start": "2024-01-02",
+        "end": "2024-01-04",
+        "output_dir": "tmp/bronze",
+        "live": False,
+    }
+
+
+def test_cli_main_enables_live_mode_with_flag(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_ingest_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_ingest_command",
+        fake_run_ingest_command,
+    )
+
+    assert (
+        main(
+            [
+                "ingest",
+                "--source",
+                "krx",
+                "--dataset",
+                "kospi_index",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-04",
+                "--live",
+            ]
+        )
+        == 0
+    )
+    assert captured["live"] is True
+
+
+def test_cli_main_enables_live_mode_with_env_var(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_ingest_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_ingest_command",
+        fake_run_ingest_command,
+    )
+    monkeypatch.setenv("KOSPI_LIVE", "1")
+
+    assert (
+        main(
+            [
+                "ingest",
+                "--source",
+                "krx",
+                "--dataset",
+                "kospi_index",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-04",
+            ]
+        )
+        == 0
+    )
+    assert captured["live"] is True
+
+
 def test_cli_main_prints_help_without_command(capsys) -> None:
     assert main([]) == 0
     assert "build-features" in capsys.readouterr().out

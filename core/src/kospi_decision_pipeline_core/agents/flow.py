@@ -11,7 +11,7 @@ from kospi_decision_pipeline_core.features.leakage_guard import (
     assert_no_forbidden_columns,
 )
 from kospi_decision_pipeline_core.schemas.config import AgentRuleConfig
-from kospi_decision_pipeline_core.schemas.decisions import AgentVote, EvidenceItem
+from kospi_decision_pipeline_core.schemas.decisions import AgentVote, EvidenceItem, ModelLabel
 
 
 _AS_OF_DATE_COLUMN = "as_of_date"
@@ -72,6 +72,8 @@ class FlowAgent:
     )
 
     def vote(self, row: AgentFeatureRow) -> AgentVote:
+        label: ModelLabel
+
         if self._matches_aligned_demand(row):
             label = "up"
             score = 0.80

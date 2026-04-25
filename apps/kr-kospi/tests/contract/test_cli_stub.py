@@ -7,7 +7,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 ENV = {
-    "PYTHONPATH": str(REPO_ROOT / "core" / "src") + ":" + str(REPO_ROOT / "apps" / "kr-kospi" / "src"),
+    "PYTHONPATH": str(REPO_ROOT / "core" / "src")
+    + ":"
+    + str(REPO_ROOT / "apps" / "kr-kospi" / "src"),
 }
 
 

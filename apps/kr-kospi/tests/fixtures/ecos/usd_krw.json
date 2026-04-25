@@ -1,0 +1,12 @@
+{
+  "source_name": "ecos",
+  "source_series_id": "usd_krw",
+  "fetched_at": "2024-01-10T09:00:00+00:00",
+  "rows": [
+    {"value_date": "2024-01-01", "exchange_rate": "1291.20"},
+    {"value_date": "2024-01-02", "exchange_rate": "1293.10"},
+    {"value_date": "2024-01-03", "exchange_rate": "1288.40"},
+    {"value_date": "2024-01-04", "exchange_rate": "1290.00"},
+    {"value_date": "2024-01-05", "exchange_rate": "1287.70"}
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "source_name": "krx",
+  "source_series_id": "kospi_index",
+  "fetched_at": "2024-01-10T09:00:00+00:00",
+  "rows": [
+    {"trade_date": "2024-01-01", "open_price": "2640.10", "high_price": "2650.20", "low_price": "2630.00", "close_price": "2645.50", "volume": 1001000, "turnover": "845000000000.00"},
+    {"trade_date": "2024-01-02", "open_price": "2645.50", "high_price": "2660.00", "low_price": "2642.20", "close_price": "2658.10", "volume": 1020000, "turnover": "852500000000.00"},
+    {"trade_date": "2024-01-03", "open_price": "2658.10", "high_price": "2661.40", "low_price": "2648.20", "close_price": "2651.00", "volume": 990000, "turnover": "830200000000.00"},
+    {"trade_date": "2024-01-04", "open_price": "2651.00", "high_price": "2659.70", "low_price": "2640.50", "close_price": "2644.20", "volume": 978000, "turnover": "818300000000.00"},
+    {"trade_date": "2024-01-05", "open_price": "2644.20", "high_price": "2665.00", "low_price": "2641.90", "close_price": "2661.80", "volume": 1042000, "turnover": "867700000000.00"}
+  ]
+}

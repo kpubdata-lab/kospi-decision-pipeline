@@ -373,6 +373,10 @@ def test_trading_calendar_rejects_2027_new_year_holiday() -> None:
     assert TradingCalendar().is_trading_day(date(2027, 1, 1)) is False
 
 
+def test_trading_calendar_rejects_2027_buddhas_birthday() -> None:
+    assert TradingCalendar().is_trading_day(date(2027, 5, 13)) is False
+
+
 def test_silver_normalizer_rejects_unsupported_dataset(tmp_path: Path) -> None:
     bronze_path = tmp_path / "bronze" / "krx" / "unsupported" / "2024-01-02.parquet"
     _write_bronze_partition(bronze_path, [{"source_name": "krx"}])

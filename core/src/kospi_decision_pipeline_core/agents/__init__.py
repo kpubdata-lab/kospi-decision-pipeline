@@ -6,6 +6,7 @@ from .domestic_macro import DomesticMacroAgent
 from .flow import AgentFeatureRow, FlowAgent
 from .technical import TechnicalAgent
 from .valuation import ValuationAgent
+from .volatility import VolatilityAgent
 
 __all__ = [
     "AgentFeatureRow",
@@ -13,4 +14,5 @@ __all__ = [
     "FlowAgent",
     "TechnicalAgent",
     "ValuationAgent",
+    "VolatilityAgent",
 ]

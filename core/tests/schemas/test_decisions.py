@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
+from typing import cast
 
 import pytest
 
@@ -9,6 +11,8 @@ from kospi_decision_pipeline_core.schemas.decisions import (
     BacktestRow,
     DecisionResult,
     EvidenceItem,
+    GroundTruthLabel,
+    ModelLabel,
 )
 
 
@@ -42,7 +46,7 @@ def test_evidence_item_construction_and_immutability() -> None:
     assert evidence.as_of == date(2026, 4, 24)
 
     with pytest.raises(AttributeError):
-        evidence.name = "momentum"
+        setattr(evidence, "name", "momentum")
 
 
 def test_agent_vote_construction_and_immutability() -> None:
@@ -57,7 +61,7 @@ def test_agent_vote_construction_and_immutability() -> None:
     assert vote.evidence == (make_evidence_item(),)
 
     with pytest.raises(AttributeError):
-        vote.weight = 0.40
+        setattr(vote, "weight", 0.40)
 
 
 def test_decision_result_construction_and_immutability() -> None:
@@ -77,7 +81,7 @@ def test_decision_result_construction_and_immutability() -> None:
     assert decision.snapshot_id == "snapshot:2026-04-25"
 
     with pytest.raises(AttributeError):
-        decision.votes = ()
+        setattr(decision, "votes", ())
 
 
 def test_backtest_row_construction_and_immutability() -> None:
@@ -95,7 +99,7 @@ def test_backtest_row_construction_and_immutability() -> None:
     assert row.hit is True
 
     with pytest.raises(AttributeError):
-        row.hit = False
+        setattr(row, "hit", False)
 
 
 @pytest.mark.parametrize(
@@ -105,7 +109,7 @@ def test_backtest_row_construction_and_immutability() -> None:
             lambda: AgentVote(
                 agent_name="technical",
                 rule_version="technical@v1",
-                label="flat",
+                label=cast(ModelLabel, cast(object, "flat")),
                 score=0.72,
                 weight=0.30,
                 weighted_score=0.216,
@@ -118,7 +122,7 @@ def test_backtest_row_construction_and_immutability() -> None:
                 decision_date=date(2026, 4, 25),
                 label="skip",
                 aggregate_score=0.0,
-                ground_truth="skip",
+                ground_truth=cast(GroundTruthLabel, cast(object, "skip")),
                 next_day_return=0.0,
                 hit=False,
             ),
@@ -127,7 +131,7 @@ def test_backtest_row_construction_and_immutability() -> None:
         (
             lambda: DecisionResult(
                 decision_date=date(2026, 4, 25),
-                label="flat",
+                label=cast(ModelLabel, cast(object, "flat")),
                 aggregate_score=0.0,
                 threshold_up=0.25,
                 threshold_down=-0.25,
@@ -139,7 +143,7 @@ def test_backtest_row_construction_and_immutability() -> None:
         ),
     ],
 )
-def test_runtime_literal_validation(factory: object, match: str) -> None:
+def test_runtime_literal_validation(factory: Callable[[], object], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         _ = factory()
 
@@ -153,7 +157,7 @@ def test_agent_vote_rejects_non_tuple_evidence() -> None:
             score=0.72,
             weight=0.30,
             weighted_score=0.216,
-            evidence=[make_evidence_item()],
+            evidence=cast(tuple[EvidenceItem, ...], cast(object, [make_evidence_item()])),
         )
 
 
@@ -165,7 +169,89 @@ def test_decision_result_rejects_non_tuple_votes() -> None:
             aggregate_score=0.42,
             threshold_up=0.25,
             threshold_down=-0.25,
-            votes=[make_agent_vote()],
+            votes=cast(tuple[AgentVote, ...], cast(object, [make_agent_vote()])),
             config_signature="cfg:abc123",
             snapshot_id="snapshot:2026-04-25",
         )
+
+
+@pytest.mark.parametrize(
+    ("factory", "match"),
+    [
+        (
+            lambda: EvidenceItem(
+                name=cast(str, cast(object, 1)),
+                value=1.25,
+                source="gold.features",
+                as_of=date(2026, 4, 24),
+            ),
+            "name must be a string",
+        ),
+        (
+            lambda: EvidenceItem(
+                name="volume_zscore",
+                value=cast(float, cast(object, True)),
+                source="gold.features",
+                as_of=date(2026, 4, 24),
+            ),
+            "value must be a float",
+        ),
+        (
+            lambda: EvidenceItem(
+                name="volume_zscore",
+                value=1.25,
+                source=cast(str, cast(object, 1)),
+                as_of=date(2026, 4, 24),
+            ),
+            "source must be a string",
+        ),
+        (
+            lambda: EvidenceItem(
+                name="volume_zscore",
+                value=1.25,
+                source="gold.features",
+                as_of=cast(date, cast(object, "2026-04-24")),
+            ),
+            "as_of must be a date",
+        ),
+        (
+            lambda: DecisionResult(
+                decision_date=date(2026, 4, 25),
+                label="up",
+                aggregate_score=0.42,
+                threshold_up=-0.25,
+                threshold_down=-0.25,
+                votes=(make_agent_vote(),),
+                config_signature="cfg:abc123",
+                snapshot_id="snapshot:2026-04-25",
+            ),
+            "threshold_up must be greater than threshold_down",
+        ),
+        (
+            lambda: BacktestRow(
+                decision_date=date(2026, 4, 25),
+                label="down",
+                aggregate_score=-0.41,
+                ground_truth="down",
+                next_day_return=-0.018,
+                hit=cast(bool, cast(object, 1)),
+            ),
+            "hit must be a bool",
+        ),
+        (
+            lambda: AgentVote(
+                agent_name="technical",
+                rule_version="technical@v1",
+                label="up",
+                score=0.72,
+                weight=0.30,
+                weighted_score=0.216,
+                evidence=(cast(EvidenceItem, cast(object, "bad")),),
+            ),
+            "evidence items must be EvidenceItem",
+        ),
+    ],
+)
+def test_runtime_type_validation(factory: Callable[[], object], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        _ = factory()

@@ -42,6 +42,12 @@ class _TradeDateValue(Protocol):
     def __call__(self, row: dict[str, object]) -> date: ...
 
 
+class _TargetDirectionLabel(Protocol):
+    def __call__(
+        self, target_next_day_log_return: float, *, flat_band_abs_log_return: float
+    ) -> str: ...
+
+
 READ_TABLE = cast(_ReadTable, getattr(pq, "read_table"))
 WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
 
@@ -130,10 +136,10 @@ def test_build_backtest_dataset_computes_targets_with_spec_column_order(tmp_path
     start = date(2024, 1, 2)
     closes = [
         100.0,
-        100.0 * exp(0.001),
-        100.0,
-        100.0 * exp(0.0005),
-        100.0 * exp(0.0025),
+        100.0 * exp(0.0012),
+        100.0 * exp(0.0012) * exp(-0.0012),
+        100.0 * exp(0.0012) * exp(-0.0012) * exp(0.0005),
+        100.0 * exp(0.0012) * exp(-0.0012) * exp(0.0005) * exp(0.002),
     ]
     source_rows = [
         _feature_row(start + timedelta(days=index), close) for index, close in enumerate(closes)
@@ -155,11 +161,11 @@ def test_build_backtest_dataset_computes_targets_with_spec_column_order(tmp_path
         start + timedelta(days=3),
     ]
     assert [row["target_direction_label"] for row in rows] == ["up", "down", "flat", "up"]
-    assert abs(cast(float, rows[0]["target_next_day_log_return"]) - 0.001) < 1e-12
-    assert abs(cast(float, rows[1]["target_next_day_log_return"]) + 0.001) < 1e-12
+    assert abs(cast(float, rows[0]["target_next_day_log_return"]) - 0.0012) < 1e-12
+    assert abs(cast(float, rows[1]["target_next_day_log_return"]) + 0.0012) < 1e-12
     assert abs(cast(float, rows[2]["target_next_day_log_return"]) - 0.0005) < 1e-12
-    assert abs(cast(float, rows[0]["target_next_day_simple_return"]) - (exp(0.001) - 1.0)) < 1e-12
-    assert abs(cast(float, rows[1]["target_next_day_simple_return"]) - (exp(-0.001) - 1.0)) < 1e-12
+    assert abs(cast(float, rows[0]["target_next_day_simple_return"]) - (exp(0.0012) - 1.0)) < 1e-12
+    assert abs(cast(float, rows[1]["target_next_day_simple_return"]) - (exp(-0.0012) - 1.0)) < 1e-12
     assert abs(cast(float, rows[2]["target_next_day_simple_return"]) - (exp(0.0005) - 1.0)) < 1e-12
     assert all(not key.startswith("future_") for key in rows[0])
     assert sorted(key for key in rows[0] if key.startswith("target_")) == [
@@ -207,10 +213,17 @@ def test_build_backtest_dataset_accepts_single_parquet_file_and_writes_empty_out
 def test_target_label_helpers_handle_invalid_numeric_and_trade_date_inputs() -> None:
     float_value = cast(_FloatValue, getattr(target_labels, "_float_value"))
     trade_date_value = cast(_TradeDateValue, getattr(target_labels, "_trade_date_value"))
+    target_direction_label = cast(
+        _TargetDirectionLabel,
+        getattr(target_labels, "_target_direction_label"),
+    )
 
     assert float_value({"kospi_close": None}, "kospi_close") is None
     assert float_value({"kospi_close": True}, "kospi_close") is None
     assert float_value({"kospi_close": object()}, "kospi_close") is None
+    assert target_direction_label(0.001, flat_band_abs_log_return=0.001) == "up"
+    assert target_direction_label(-0.001, flat_band_abs_log_return=0.001) == "down"
+    assert target_direction_label(0.0, flat_band_abs_log_return=0.001) == "flat"
     with pytest.raises(ValueError, match="^missing or invalid trade date: None$"):
         _ = trade_date_value({})
 

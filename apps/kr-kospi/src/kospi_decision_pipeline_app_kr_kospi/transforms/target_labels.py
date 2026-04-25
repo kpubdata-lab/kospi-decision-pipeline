@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from datetime import date
-from math import isclose, log
+from math import log
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -32,7 +32,6 @@ class _WriteTable(Protocol):
 
 READ_TABLE = cast(_ReadTable, getattr(pq, "read_table"))
 WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
-BOUNDARY_TOLERANCE = 1e-12
 FEATURE_COLUMNS = (
     "kospi_close",
     "kospi_return_1d",
@@ -98,6 +97,18 @@ def _trade_date_value(row: dict[str, object]) -> date:
     return value
 
 
+def _target_direction_label(
+    target_next_day_log_return: float,
+    *,
+    flat_band_abs_log_return: float,
+) -> str:
+    if target_next_day_log_return >= flat_band_abs_log_return:
+        return "up"
+    if target_next_day_log_return <= -flat_band_abs_log_return:
+        return "down"
+    return "flat"
+
+
 def _read_gold_rows(gold_dir: Path) -> list[dict[str, object]]:
     if gold_dir.is_file():
         parquet_paths = (gold_dir,)
@@ -152,26 +163,15 @@ def build_backtest_dataset(
             continue
         target_next_day_simple_return = (next_close / current_close) - 1.0
         target_next_day_log_return = log(next_close / current_close)
-        if target_next_day_log_return >= flat_band_abs_log_return or isclose(
-            target_next_day_log_return,
-            flat_band_abs_log_return,
-            abs_tol=BOUNDARY_TOLERANCE,
-        ):
-            target_direction_label = "up"
-        elif target_next_day_log_return <= -flat_band_abs_log_return or isclose(
-            target_next_day_log_return,
-            -flat_band_abs_log_return,
-            abs_tol=BOUNDARY_TOLERANCE,
-        ):
-            target_direction_label = "down"
-        else:
-            target_direction_label = "flat"
         backtest_rows.append(
             _build_output_row(
                 current_row,
                 target_next_day_simple_return=target_next_day_simple_return,
                 target_next_day_log_return=target_next_day_log_return,
-                target_direction_label=target_direction_label,
+                target_direction_label=_target_direction_label(
+                    target_next_day_log_return,
+                    flat_band_abs_log_return=flat_band_abs_log_return,
+                ),
             )
         )
     output_path.parent.mkdir(parents=True, exist_ok=True)

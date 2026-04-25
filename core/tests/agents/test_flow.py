@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from math import nan
+from math import inf, nan
 
 import pytest
 
@@ -146,6 +146,51 @@ def test_flow_agent_preserves_specified_evidence_order_sources_and_weighted_scor
     )
 
 
+def test_flow_agent_uses_negative_weighted_score_for_down_vote() -> None:
+    vote = make_agent(weight=0.25).vote(
+        make_row(
+            foreign_5d=-1000000000000,
+            institution_5d=-200000000000,
+            individual_5d=1200000000000,
+            foreign_pct=-0.013,
+        )
+    )
+
+    assert vote.label == "down"
+    assert vote.score == pytest.approx(-0.80)
+    assert vote.weighted_score == pytest.approx(-0.20)
+
+
+@pytest.mark.parametrize(
+    ("foreign_5d", "institution_5d", "individual_5d", "foreign_pct"),
+    [
+        (inf, 300000000000, -1500000000000, 0.012),
+        (-inf, -200000000000, 1200000000000, -0.013),
+        (1200000000000, inf, -1500000000000, 0.012),
+        (1200000000000, 300000000000, -1500000000000, inf),
+        (1200000000000, 300000000000, -1500000000000, -inf),
+    ],
+)
+def test_flow_agent_treats_any_non_finite_predicate_input_as_not_matched(
+    foreign_5d: float,
+    institution_5d: float,
+    individual_5d: float,
+    foreign_pct: float,
+) -> None:
+    vote = make_agent().vote(
+        make_row(
+            foreign_5d=foreign_5d,
+            institution_5d=institution_5d,
+            individual_5d=individual_5d,
+            foreign_pct=foreign_pct,
+        )
+    )
+
+    assert vote.label == "skip"
+    assert vote.score == pytest.approx(0.0)
+    assert vote.weighted_score == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize(
     ("foreign_5d", "institution_5d", "individual_5d", "foreign_pct"),
     [
@@ -173,6 +218,42 @@ def test_flow_agent_treats_any_nan_predicate_input_as_not_matched(
     assert vote.label == "skip"
     assert vote.score == pytest.approx(0.0)
     assert vote.weighted_score == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize(
+    ("foreign_pct", "expected_label", "expected_score"),
+    [
+        (0.010, "up", 0.80),
+        (-0.010, "down", -0.80),
+        (0.003, "skip", 0.0),
+        (-0.003, "skip", 0.0),
+        (0.0029, "skip", 0.0),
+    ],
+)
+def test_flow_agent_respects_spec_threshold_boundaries(
+    foreign_pct: float,
+    expected_label: str,
+    expected_score: float,
+) -> None:
+    if foreign_pct >= 0.0:
+        row = make_row(
+            foreign_5d=1200000000000,
+            institution_5d=300000000000,
+            individual_5d=-1500000000000,
+            foreign_pct=foreign_pct,
+        )
+    else:
+        row = make_row(
+            foreign_5d=-1000000000000,
+            institution_5d=-200000000000,
+            individual_5d=1200000000000,
+            foreign_pct=foreign_pct,
+        )
+
+    vote = make_agent().vote(row)
+
+    assert vote.label == expected_label
+    assert vote.score == pytest.approx(expected_score)
 
 
 def test_agent_feature_row_rejects_forbidden_target_columns() -> None:

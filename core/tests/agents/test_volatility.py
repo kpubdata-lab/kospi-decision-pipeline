@@ -1,14 +1,30 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 from math import isnan
+from pathlib import Path
 
-import pytest
+CORE_SRC = Path(__file__).resolve().parents[2] / "src"
+sys.path.insert(0, str(CORE_SRC))
 
 from kospi_decision_pipeline_core.features.leakage_guard import LeakageError
 from kospi_decision_pipeline_core.schemas import AgentRuleConfig
 
 from kospi_decision_pipeline_core.agents.volatility import AgentFeatureRow, VolatilityAgent
+
+
+@contextmanager
+def assert_raises(error_type: type[BaseException], match: str) -> Iterator[None]:
+    try:
+        yield
+    except error_type as error:
+        if match not in str(error):
+            raise AssertionError(f"expected {match!r} in {error!r}") from error
+    else:
+        raise AssertionError(f"expected {error_type.__name__} to be raised")
 
 
 def make_agent() -> VolatilityAgent:
@@ -47,26 +63,19 @@ def make_row(
     )
 
 
-@pytest.mark.parametrize(
-    ("row", "label", "score"),
-    [
+def test_volatility_agent_truth_table() -> None:
+    for row, label, score in (
         (make_row(rv20d=0.15, rv_pct=0.22, atr14=28.0), "up", 0.40),
         (make_row(rv20d=0.29, rv_pct=0.88, atr14=47.0), "down", -0.65),
         (make_row(rv20d=0.21, rv_pct=0.55, atr14=34.0), "skip", 0.0),
         (make_row(rv20d=0.20, rv_pct=0.85, atr14=30.0), "skip", 0.0),
-    ],
-)
-def test_volatility_agent_truth_table(
-    row: AgentFeatureRow,
-    label: str,
-    score: float,
-) -> None:
-    vote = make_agent().vote(row)
+    ):
+        vote = make_agent().vote(row)
 
-    assert vote.agent_name == "volatility"
-    assert vote.rule_version == "volatility@1.0.0"
-    assert vote.label == label
-    assert vote.score == score
+        assert vote.agent_name == "volatility"
+        assert vote.rule_version == "volatility@1.0.0"
+        assert vote.label == label
+        assert vote.score == score
 
 
 def test_volatility_agent_uses_inclusive_and_exclusive_threshold_edges() -> None:
@@ -87,12 +96,46 @@ def test_volatility_agent_uses_inclusive_and_exclusive_threshold_edges() -> None
     assert high_boundary_fallback.score == 0.0
 
 
+def test_volatility_agent_matches_stress_branch_via_atr_only_path() -> None:
+    vote = make_agent().vote(make_row(rv20d=0.24, rv_pct=0.88, atr14=45.0))
+
+    assert vote.label == "down"
+    assert vote.score == -0.65
+
+
 def test_volatility_agent_treats_nan_inputs_as_not_matched() -> None:
     vote = make_agent().vote(make_row(rv20d=0.15, rv_pct=float("nan"), atr14=28.0))
 
     assert vote.label == "skip"
     assert vote.score == 0.0
     assert isnan(vote.evidence[1].value)
+
+
+def test_volatility_agent_treats_nan_rv20d_and_atr_as_not_matched() -> None:
+    for rv20d, rv_pct, atr14, evidence_index in (
+        (float("nan"), 0.22, 28.0, 0),
+        (0.15, 0.22, float("nan"), 2),
+    ):
+        vote = make_agent().vote(make_row(rv20d=rv20d, rv_pct=rv_pct, atr14=atr14))
+
+        assert vote.label == "skip"
+        assert vote.score == 0.0
+        assert isnan(vote.evidence[evidence_index].value)
+
+
+def test_volatility_agent_treats_non_finite_inputs_as_not_matched() -> None:
+    for rv20d, rv_pct, atr14 in (
+        (float("inf"), 0.22, 28.0),
+        (0.15, float("inf"), 28.0),
+        (0.15, 0.22, float("inf")),
+        (float("-inf"), 0.22, 28.0),
+        (0.15, float("-inf"), 0.55),
+        (0.15, 0.22, float("-inf")),
+    ):
+        vote = make_agent().vote(make_row(rv20d=rv20d, rv_pct=rv_pct, atr14=atr14))
+
+        assert vote.label == "skip"
+        assert vote.score == 0.0
 
 
 def test_volatility_agent_emits_evidence_in_spec_order_with_sources_and_weighting() -> None:
@@ -125,7 +168,7 @@ def test_volatility_agent_rejects_non_whitelisted_inputs() -> None:
         },
     )
 
-    with pytest.raises(LeakageError, match="forbidden columns"):
+    with assert_raises(LeakageError, "forbidden columns"):
         _ = make_agent().vote(row)
 
 
@@ -140,7 +183,7 @@ def test_volatility_agent_rejects_unknown_extra_inputs() -> None:
         },
     )
 
-    with pytest.raises(LeakageError, match="non-whitelisted columns"):
+    with assert_raises(LeakageError, "non-whitelisted columns"):
         _ = make_agent().vote(row)
 
 
@@ -170,12 +213,12 @@ def test_volatility_agent_rejects_unsupported_feature_values() -> None:
         },
     )
 
-    with pytest.raises(LeakageError, match="unsupported feature value"):
+    with assert_raises(LeakageError, "unsupported feature value"):
         _ = make_agent().vote(row)
 
 
 def test_volatility_agent_validates_rule_version_and_weight() -> None:
-    with pytest.raises(ValueError, match="rule_version must equal volatility@1.0.0"):
+    with assert_raises(ValueError, "rule_version must equal volatility@1.0.0"):
         _ = VolatilityAgent(
             rule_config=AgentRuleConfig(
                 rule_version="volatility@0.9.0",
@@ -193,5 +236,5 @@ def test_volatility_agent_validates_rule_version_and_weight() -> None:
             weight=0.15,
         )
 
-    with pytest.raises(ValueError, match="weight must be a float"):
+    with assert_raises(ValueError, "weight must be a float"):
         _ = VolatilityAgent(rule_config=make_agent().rule_config, weight=True)

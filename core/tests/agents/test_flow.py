@@ -256,6 +256,68 @@ def test_flow_agent_respects_spec_threshold_boundaries(
     assert vote.score == pytest.approx(expected_score)
 
 
+@pytest.mark.parametrize(
+    ("institution_5d", "individual_5d", "expected_label", "expected_score"),
+    [
+        (0.0, -1500000000000, "up", 0.80),
+        (300000000000, 0.0, "up", 0.80),
+        (0.0, 1200000000000, "down", -0.80),
+        (-200000000000, 0.0, "down", -0.80),
+    ],
+)
+def test_flow_agent_honors_zero_sign_boundaries(
+    institution_5d: float,
+    individual_5d: float,
+    expected_label: str,
+    expected_score: float,
+) -> None:
+    foreign_5d = 1200000000000 if expected_label == "up" else -1000000000000
+    foreign_pct = 0.012 if expected_label == "up" else -0.013
+
+    vote = make_agent().vote(
+        make_row(
+            foreign_5d=foreign_5d,
+            institution_5d=institution_5d,
+            individual_5d=individual_5d,
+            foreign_pct=foreign_pct,
+        )
+    )
+
+    assert vote.label == expected_label
+    assert vote.score == pytest.approx(expected_score)
+
+
+def test_flow_agent_treats_zero_foreign_flow_as_fallback_skip() -> None:
+    vote = make_agent().vote(
+        make_row(
+            foreign_5d=0.0,
+            institution_5d=300000000000,
+            individual_5d=-1500000000000,
+            foreign_pct=0.012,
+        )
+    )
+
+    assert vote.label == "skip"
+    assert vote.score == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("individual_5d", [inf, -inf])
+def test_flow_agent_ignores_non_finite_individual_flow_in_branch_three_predicate(
+    individual_5d: float,
+) -> None:
+    vote = make_agent().vote(
+        make_row(
+            foreign_5d=500000000000,
+            institution_5d=-100000000000,
+            individual_5d=individual_5d,
+            foreign_pct=0.006,
+        )
+    )
+
+    assert vote.label == "skip"
+    assert vote.score == pytest.approx(0.0)
+
+
 def test_agent_feature_row_rejects_forbidden_target_columns() -> None:
     with pytest.raises(LeakageError, match="forbidden columns"):
         _ = AgentFeatureRow.from_mapping(

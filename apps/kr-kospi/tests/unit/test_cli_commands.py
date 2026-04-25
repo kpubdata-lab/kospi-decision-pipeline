@@ -5,11 +5,14 @@ import sys
 from pathlib import Path
 import runpy
 
+import pytest
+
 from kospi_decision_pipeline_app_kr_kospi import __version__
 from kospi_decision_pipeline_app_kr_kospi.cli import (
-    _fixtures_root,
-    _parse_date,
+    fixtures_root,
     main,
+    parse_date,
+    run_build_features_command,
     run_ingest_command,
 )
 
@@ -36,12 +39,12 @@ def test_cli_stub_subcommand_output() -> None:
     assert result.stdout.strip() == "run: not yet implemented"
 
 
-def test_cli_main_returns_zero_for_run(capsys) -> None:
+def test_cli_main_returns_zero_for_run(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["run"]) == 0
     assert capsys.readouterr().out.strip() == "run: not yet implemented"
 
 
-def test_cli_main_runs_fixture_ingest(monkeypatch) -> None:
+def test_cli_main_runs_fixture_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_ingest_command(**kwargs: object) -> int:
@@ -81,7 +84,7 @@ def test_cli_main_runs_fixture_ingest(monkeypatch) -> None:
     }
 
 
-def test_cli_main_enables_live_mode_with_flag(monkeypatch) -> None:
+def test_cli_main_enables_live_mode_with_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_ingest_command(**kwargs: object) -> int:
@@ -113,7 +116,7 @@ def test_cli_main_enables_live_mode_with_flag(monkeypatch) -> None:
     assert captured["live"] is True
 
 
-def test_cli_main_enables_live_mode_with_env_var(monkeypatch) -> None:
+def test_cli_main_enables_live_mode_with_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_ingest_command(**kwargs: object) -> int:
@@ -145,7 +148,9 @@ def test_cli_main_enables_live_mode_with_env_var(monkeypatch) -> None:
     assert captured["live"] is True
 
 
-def test_run_ingest_command_writes_fixture_output(tmp_path: Path, capsys) -> None:
+def test_run_ingest_command_writes_fixture_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert (
         run_ingest_command(
             source="krx",
@@ -163,29 +168,113 @@ def test_run_ingest_command_writes_fixture_output(tmp_path: Path, capsys) -> Non
     assert "wrote krx/kospi_index/2024-01-02.parquet sha256=" in capsys.readouterr().out
 
 
+def test_cli_main_routes_build_features_silver_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_build_features_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_build_features_command",
+        fake_run_build_features_command,
+    )
+
+    assert (
+        main(
+            [
+                "build-features",
+                "--layer",
+                "silver",
+                "--source",
+                "krx",
+                "--dataset",
+                "kospi_index",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-03",
+                "--bronze-dir",
+                "tmp/bronze",
+                "--out",
+                "tmp/silver",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "layer": "silver",
+        "source": "krx",
+        "dataset": "kospi_index",
+        "start": "2024-01-02",
+        "end": "2024-01-03",
+        "bronze_dir": "tmp/bronze",
+        "output_dir": "tmp/silver",
+    }
+
+
+def test_run_build_features_command_writes_silver_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        run_build_features_command(
+            layer="silver",
+            source="krx",
+            dataset="kospi_index",
+            start="2024-01-02",
+            end="2024-01-03",
+            bronze_dir=str(tmp_path / "bronze"),
+            output_dir=str(tmp_path / "silver"),
+        )
+        == 0
+    )
+
+    assert (tmp_path / "silver" / "kospi_index" / "2024-01-02.parquet").is_file()
+    assert "wrote kospi_index/2024-01-02.parquet sha256=" in capsys.readouterr().out
+
+
 def test_parse_date_and_fixture_root_helpers() -> None:
-    assert _parse_date("2024-01-02").isoformat() == "2024-01-02"
-    assert (_fixtures_root() / "krx" / "kospi_index.json").is_file()
+    assert parse_date("2024-01-02").isoformat() == "2024-01-02"
+    assert (fixtures_root() / "krx" / "kospi_index.json").is_file()
 
 
-def test_cli_main_prints_help_without_command(capsys) -> None:
+def test_cli_main_prints_help_without_command(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     assert "build-features" in capsys.readouterr().out
 
 
-def test_cli_main_prints_version_and_exits(capsys) -> None:
+def test_cli_main_prints_version_and_exits(capsys: pytest.CaptureFixture[str]) -> None:
     try:
-        main(["--version"])
+        _ = main(["--version"])
     except SystemExit as exc:
         assert exc.code == 0
 
     assert capsys.readouterr().out.strip() == __version__
 
 
-def test_module_main_raises_system_exit(monkeypatch) -> None:
+def test_module_main_raises_system_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["kospi_decision_pipeline_app_kr_kospi", "run"])
 
     try:
-        runpy.run_module("kospi_decision_pipeline_app_kr_kospi", run_name="__main__")
+        _ = runpy.run_module("kospi_decision_pipeline_app_kr_kospi", run_name="__main__")
     except SystemExit as exc:
         assert exc.code == 0
+
+
+def test_run_build_features_command_reports_non_silver_layer(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        run_build_features_command(
+            layer="gold",
+            source="krx",
+            dataset="kospi_index",
+            start="2024-01-02",
+            end="2024-01-03",
+            bronze_dir="tmp/bronze",
+            output_dir="tmp/gold",
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == "build-features --layer gold: not yet implemented"

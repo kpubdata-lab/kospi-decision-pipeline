@@ -1,0 +1,2 @@
+class FeatureRecord:
+    pass

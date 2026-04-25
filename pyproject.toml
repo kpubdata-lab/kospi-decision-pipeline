@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kospi-decision-pipeline"
+version = "0.0.1"
+description = "Deterministic next-day KOSPI decision pipeline"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "abdp @ git+https://github.com/yeongseon/agent-based-decision-pipeline.git@9520cfed7e150f644fb5d01bb1a9b32eb0082f8d",
+  "pydantic>=2",
+  "pyyaml",
+  "pyarrow",
+  "pandas",
+  "kpubdata>=0",
+]
+
+[project.scripts]
+kospi-pipeline = "kospi_decision_pipeline_app_kr_kospi.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.4",
+  "mypy>=1.10",
+  "types-pyyaml",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "core/src/kospi_decision_pipeline_core",
+  "apps/kr-kospi/src/kospi_decision_pipeline_app_kr_kospi",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["abdp", "abdp.*", "kpubdata", "kpubdata.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+testpaths = [
+  "core/tests",
+  "apps/kr-kospi/tests",
+]
+
+[tool.coverage.run]
+source = [
+  "core/src/kospi_decision_pipeline_core",
+  "apps/kr-kospi/src/kospi_decision_pipeline_app_kr_kospi",
+]
+branch = true

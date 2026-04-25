@@ -105,3 +105,33 @@ def test_walk_forward_splitter_raises_when_test_row_date_is_not_strictly_greater
 
 def test_walk_forward_splitter_yields_no_folds_when_rows_are_insufficient() -> None:
     assert list(WalkForwardSplitter().split(_trade_dates(251))) == []
+
+
+def test_walk_forward_splitter_returns_original_indices_for_unsorted_inputs() -> None:
+    trade_dates = _trade_dates(273)
+    unsorted_trade_dates = [*trade_dates[1:252], trade_dates[0], *trade_dates[252:]]
+
+    folds = list(WalkForwardSplitter().split(unsorted_trade_dates))
+
+    assert folds[0] == WalkForwardFold(
+        fold_id=1,
+        train_cutoff=trade_dates[251],
+        train_indices=tuple([251, *range(251)]),
+        test_indices=tuple(range(252, 272)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"min_train_rows": 0}, "^min_train_rows must be positive$"),
+        ({"test_fold_size": 0}, "^test_fold_size must be positive$"),
+        ({"gap_days": -1}, "^gap_days must be non-negative$"),
+    ],
+)
+def test_walk_forward_splitter_validates_constructor_inputs(
+    kwargs: dict[str, int],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _ = WalkForwardSplitter(**kwargs)

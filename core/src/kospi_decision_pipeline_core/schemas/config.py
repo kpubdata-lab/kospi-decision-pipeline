@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import isclose
 from pathlib import Path
-import re
 from types import MappingProxyType
 from typing import Final, Literal, TypedDict, cast
 
@@ -93,6 +92,15 @@ REQUIRED_AGENT_THRESHOLD_KEYS: Final[Mapping[str, frozenset[str]]] = MappingProx
                 "realized_vol_pct_mid_high",
             }
         ),
+    }
+)
+EXPECTED_RULE_VERSIONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "technical": "technical@1.0.0",
+        "domestic_macro": "domestic_macro@1.0.0",
+        "flow": "flow@1.0.0",
+        "valuation": "valuation@1.0.0",
+        "volatility": "volatility@1.0.0",
     }
 )
 WEIGHT_TOLERANCE: Final[float] = 1e-9
@@ -378,8 +386,9 @@ def _validate_matching_agent_keys(
 
 
 def _validate_rule_version(agent_name: str, rule_version: str) -> None:
-    if not re.fullmatch(rf"{re.escape(agent_name)}@\d+\.\d+\.\d+", rule_version):
-        raise ValueError(f"agents.{agent_name}.rule_version must match {agent_name}@<semver>")
+    expected_rule_version = EXPECTED_RULE_VERSIONS[agent_name]
+    if rule_version != expected_rule_version:
+        raise ValueError(f"agents.{agent_name}.rule_version must equal {expected_rule_version}")
 
 
 def _validate_threshold_keys(

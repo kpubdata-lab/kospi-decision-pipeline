@@ -381,6 +381,18 @@ def test_load_agents_config_rejects_invalid_rule_version_format(tmp_path: Path) 
         _ = load_agents_config(config_path)
 
 
+def test_load_agents_config_rejects_unsupported_rule_version_semver(tmp_path: Path) -> None:
+    payload = valid_agents_payload()
+    agents = cast(dict[str, dict[str, object]], payload["agents"])
+    agents["technical"]["rule_version"] = "technical@1.0.1"
+    config_path = write_yaml(tmp_path / "agents.yaml", payload)
+
+    with pytest.raises(
+        ValueError, match="agents.technical.rule_version must equal technical@1.0.0"
+    ):
+        _ = load_agents_config(config_path)
+
+
 def test_load_agents_config_rejects_non_numeric_agent_threshold_value(tmp_path: Path) -> None:
     payload = valid_agents_payload()
     agents = cast(dict[str, dict[str, object]], payload["agents"])

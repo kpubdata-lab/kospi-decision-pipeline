@@ -213,7 +213,50 @@ def test_cli_main_routes_build_features_silver_args(monkeypatch: pytest.MonkeyPa
         "start": "2024-01-02",
         "end": "2024-01-03",
         "bronze_dir": "tmp/bronze",
+        "silver_dir": "data/silver",
         "output_dir": "tmp/silver",
+    }
+
+
+def test_cli_main_routes_build_features_gold_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_build_features_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_build_features_command",
+        fake_run_build_features_command,
+    )
+
+    assert (
+        main(
+            [
+                "build-features",
+                "--layer",
+                "gold",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-12-31",
+                "--silver-dir",
+                "tmp/silver",
+                "--out",
+                "tmp/gold",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "layer": "gold",
+        "source": "",
+        "dataset": "",
+        "start": "2024-01-02",
+        "end": "2024-12-31",
+        "bronze_dir": "data/bronze",
+        "silver_dir": "tmp/silver",
+        "output_dir": "tmp/gold",
     }
 
 
@@ -236,6 +279,7 @@ def test_run_build_features_command_writes_silver_output(
             start="2024-01-02",
             end="2024-01-03",
             bronze_dir=str(tmp_path / "bronze"),
+            silver_dir=str(tmp_path / "silver"),
             output_dir=str(tmp_path / "silver"),
         )
         == 0
@@ -254,6 +298,7 @@ def test_run_build_features_command_rejects_unsupported_dataset() -> None:
             start="2024-01-02",
             end="2024-01-03",
             bronze_dir="tmp/bronze",
+            silver_dir="tmp/silver",
             output_dir="tmp/silver",
         )
 
@@ -286,20 +331,29 @@ def test_module_main_raises_system_exit(monkeypatch: pytest.MonkeyPatch) -> None
         assert exc.code == 0
 
 
-def test_run_build_features_command_reports_non_silver_layer(
-    capsys: pytest.CaptureFixture[str],
+def test_run_build_features_command_writes_gold_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import GoldFeatureBuilder
+    from tests.contract.test_gold_features import _build_complete_silver_history, _trading_days
+
+    days = _trading_days(252)
+    _build_complete_silver_history(tmp_path / "silver", days)
+
     assert (
         run_build_features_command(
             layer="gold",
-            source="krx",
-            dataset="kospi_index",
-            start="2024-01-02",
-            end="2024-01-03",
-            bronze_dir="tmp/bronze",
-            output_dir="tmp/gold",
+            source="",
+            dataset="",
+            start=days[0].isoformat(),
+            end=days[-1].isoformat(),
+            bronze_dir=str(tmp_path / "bronze"),
+            silver_dir=str(tmp_path / "silver"),
+            output_dir=str(tmp_path / "gold"),
         )
         == 0
     )
 
-    assert capsys.readouterr().out.strip() == "build-features --layer gold: not yet implemented"
+    output_path = tmp_path / "gold" / GoldFeatureBuilder.OUTPUT_FILE_NAME
+    assert output_path.is_file()
+    assert "wrote decision_features.parquet sha256=" in capsys.readouterr().out

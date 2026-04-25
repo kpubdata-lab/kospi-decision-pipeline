@@ -57,24 +57,38 @@ def test_technical_agent_emits_all_evidence_items_in_spec_order() -> None:
         )
 
 
-def test_technical_agent_nan_in_any_input_falls_back_to_skip() -> None:
-    for column in EXPECTED_EVIDENCE_NAMES:
-        row: dict[str, float] = {
-            "kospi_return_1d": 0.004,
+def test_technical_agent_invalid_return_1d_does_not_block_bullish_branch() -> None:
+    for value in (None, math.nan, math.inf, -math.inf):
+        row = {
+            "kospi_return_1d": value,
             "kospi_return_5d": 0.018,
             "kospi_ma5_gap": 0.008,
             "kospi_close_position": 0.72,
         }
-        row[column] = math.nan
 
         vote = make_agent().vote(row)
 
-        assert vote.label == "skip"
-        assert vote.score == 0.0
+        assert vote.label == "up"
+        assert vote.score == 0.70
 
 
-def test_technical_agent_non_finite_or_null_inputs_fall_back_to_skip() -> None:
-    for value in (None, math.inf, -math.inf):
+def test_technical_agent_invalid_return_1d_does_not_block_bearish_branch() -> None:
+    for value in (None, math.nan, math.inf, -math.inf):
+        row = {
+            "kospi_return_1d": value,
+            "kospi_return_5d": -0.015,
+            "kospi_ma5_gap": -0.009,
+            "kospi_close_position": 0.28,
+        }
+
+        vote = make_agent().vote(row)
+
+        assert vote.label == "down"
+        assert vote.score == -0.70
+
+
+def test_technical_agent_invalid_branch_input_falls_through_to_fallback_skip() -> None:
+    for value in (None, math.nan, math.inf, -math.inf):
         row = {
             "kospi_return_1d": 0.004,
             "kospi_return_5d": value,

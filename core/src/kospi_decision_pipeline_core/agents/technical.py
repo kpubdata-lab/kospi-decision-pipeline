@@ -45,10 +45,7 @@ class TechnicalAgent:
         label: Literal["up", "down", "skip"] = "skip"
         score = 0.0
 
-        if any(value is None for value in (return_1d, return_5d, ma5_gap, close_position)):
-            label = "skip"
-            score = 0.0
-        elif (
+        if (
             ma5_gap is not None
             and close_position is not None
             and return_5d is not None

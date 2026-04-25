@@ -1,5 +1,12 @@
-from .config import ScenarioConfig
+from .config import AgentWeightConfig, AgentsConfig, ScenarioConfig, ThresholdsConfig
 from .decisions import DecisionRecord
 from .features import FeatureRecord
 
-__all__ = ["DecisionRecord", "FeatureRecord", "ScenarioConfig"]
+__all__ = [
+    "AgentWeightConfig",
+    "AgentsConfig",
+    "DecisionRecord",
+    "FeatureRecord",
+    "ScenarioConfig",
+    "ThresholdsConfig",
+]

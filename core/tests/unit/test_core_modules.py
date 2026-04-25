@@ -32,4 +32,11 @@ def test_decision_dataclass() -> None:
 def test_schema_stubs_are_instantiable() -> None:
     assert isinstance(DecisionRecord(), DecisionRecord)
     assert isinstance(FeatureRecord(), FeatureRecord)
-    assert isinstance(ScenarioConfig(), ScenarioConfig)
+    assert isinstance(
+        ScenarioConfig(
+            scenario_id="kospi.next_day",
+            horizon="next_day",
+            agents=("technical", "decision"),
+        ),
+        ScenarioConfig,
+    )

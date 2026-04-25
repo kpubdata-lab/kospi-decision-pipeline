@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry, LiveConnectorRegistry
-from .transforms.silver import SilverNormalizer, silver_sha256
+from .transforms.silver import DATASET_DEFINITIONS, SilverNormalizer, silver_sha256
 
 
 def parse_date(value: str) -> date:
@@ -61,16 +61,16 @@ def run_build_features_command(
     if layer != "silver":
         print(f"build-features --layer {layer}: not yet implemented")
         return 0
-    registry = FixtureConnectorRegistry(fixtures_root())
-    connector = registry.get_connector(source)
-    bronze_result = BronzeIngestor(output_root=Path(bronze_dir)).ingest(
-        connector=connector,
+    if (source, dataset) not in DATASET_DEFINITIONS:
+        raise ValueError(f"unsupported Silver dataset: {source}/{dataset}")
+    normalizer = SilverNormalizer(output_root=Path(output_dir))
+    written_paths = normalizer.normalize_dataset(
+        bronze_root=Path(bronze_dir),
+        source_name=source,
         dataset_id=dataset,
         start=parse_date(start),
         end=parse_date(end),
     )
-    normalizer = SilverNormalizer(output_root=Path(output_dir))
-    written_paths = normalizer.normalize_ingest_result(bronze_result)
     for path in written_paths:
         relative_path = path.relative_to(Path(output_dir))
         print(f"wrote {relative_path.as_posix()} sha256={silver_sha256(path)}")

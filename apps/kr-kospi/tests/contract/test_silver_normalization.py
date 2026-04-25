@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.fixture import (
+    FixtureDataPortalConnector,
     FixtureEcosConnector,
     FixtureKosisConnector,
     FixtureKrxConnector,
@@ -68,11 +69,13 @@ def _write_bronze_partition(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 @pytest.mark.parametrize(
-    ("connector", "dataset_id", "expected_relative_path", "expected_row"),
+    ("connector", "dataset_id", "start_date", "end_date", "expected_relative_path", "expected_row"),
     [
         (
             FixtureKrxConnector(FIXTURES_ROOT),
             "kospi_index",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
             Path("kospi_index/2024-01-02.parquet"),
             {
                 "as_of_date": date(2024, 1, 2),
@@ -90,6 +93,8 @@ def _write_bronze_partition(path: Path, rows: list[dict[str, object]]) -> None:
         (
             FixtureKrxConnector(FIXTURES_ROOT),
             "investor_flow",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
             Path("investor_flow/2024-01-02.parquet"),
             {
                 "as_of_date": date(2024, 1, 2),
@@ -102,8 +107,26 @@ def _write_bronze_partition(path: Path, rows: list[dict[str, object]]) -> None:
             },
         ),
         (
+            FixtureKrxConnector(FIXTURES_ROOT),
+            "market_valuation",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
+            Path("market_valuation/2024-01-02.parquet"),
+            {
+                "as_of_date": date(2024, 1, 2),
+                "source_name": "krx",
+                "source_series_id": "market_valuation",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "market_cap_krw": Decimal("2105000000000000"),
+                "trailing_per": Decimal("10.3"),
+                "trailing_pbr": Decimal("0.93"),
+            },
+        ),
+        (
             FixtureEcosConnector(FIXTURES_ROOT),
             "base_rate",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
             Path("base_rate/2024-01-02.parquet"),
             {
                 "as_of_date": date(2024, 1, 2),
@@ -114,8 +137,39 @@ def _write_bronze_partition(path: Path, rows: list[dict[str, object]]) -> None:
             },
         ),
         (
+            FixtureEcosConnector(FIXTURES_ROOT),
+            "usd_krw",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
+            Path("usd_krw/2024-01-02.parquet"),
+            {
+                "as_of_date": date(2024, 1, 2),
+                "source_name": "ecos",
+                "source_series_id": "usd_krw",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "usd_krw_rate": Decimal("1293.10"),
+            },
+        ),
+        (
+            FixtureEcosConnector(FIXTURES_ROOT),
+            "bond_yield",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
+            Path("bond_yield/2024-01-02.parquet"),
+            {
+                "as_of_date": date(2024, 1, 2),
+                "source_name": "ecos",
+                "source_series_id": "bond_yield",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "maturity_code": "3Y",
+                "yield_rate_pct": Decimal("3.23"),
+            },
+        ),
+        (
             FixtureKosisConnector(FIXTURES_ROOT),
             "per_pbr_percentiles",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
             Path("per_pbr_percentiles/2024-01-02.parquet"),
             {
                 "as_of_date": date(2024, 1, 2),
@@ -126,12 +180,45 @@ def _write_bronze_partition(path: Path, rows: list[dict[str, object]]) -> None:
                 "pbr_percentile_pct": Decimal("39.2"),
             },
         ),
+        (
+            FixtureKosisConnector(FIXTURES_ROOT),
+            "macro_indicators",
+            date(2024, 1, 2),
+            date(2024, 1, 2),
+            Path("macro_indicators/2024-01-02.parquet"),
+            {
+                "as_of_date": date(2024, 1, 2),
+                "source_name": "kosis",
+                "source_series_id": "macro_indicators",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "indicator_name": "cpi_yoy",
+                "indicator_value": Decimal("2.8"),
+                "unit": "percent",
+            },
+        ),
+        (
+            FixtureDataPortalConnector(FIXTURES_ROOT),
+            "sample_dataset",
+            date(2024, 1, 3),
+            date(2024, 1, 3),
+            Path("sample_dataset/2024-01-03.parquet"),
+            {
+                "as_of_date": date(2024, 1, 3),
+                "source_name": "data_portal",
+                "source_series_id": "sample_dataset",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "metric_name": "public_signal",
+                "metric_value": Decimal("101.5"),
+            },
+        ),
     ],
 )
 def test_silver_normalizer_normalizes_fixture_bronze_rows(
     tmp_path: Path,
     connector: object,
     dataset_id: str,
+    start_date: date,
+    end_date: date,
     expected_relative_path: Path,
     expected_row: dict[str, object],
 ) -> None:
@@ -142,8 +229,8 @@ def test_silver_normalizer_normalizes_fixture_bronze_rows(
     bronze_result = bronze_ingestor.ingest(
         connector=connector,
         dataset_id=dataset_id,
-        start=date(2024, 1, 2),
-        end=date(2024, 1, 2),
+        start=start_date,
+        end=end_date,
     )
 
     silver_normalizer = SilverNormalizer(output_root=tmp_path / "silver")
@@ -248,6 +335,18 @@ def test_trading_calendar_rejects_unsupported_year() -> None:
 
     with pytest.raises(ValueError, match="2027"):
         _ = calendar.is_trading_day(date(2027, 1, 2))
+
+
+def test_trading_calendar_rejects_weekend() -> None:
+    assert TradingCalendar().is_trading_day(date(2024, 1, 6)) is False
+
+
+def test_trading_calendar_rejects_known_holiday() -> None:
+    assert TradingCalendar().is_trading_day(date(2024, 12, 31)) is False
+
+
+def test_trading_calendar_accepts_trading_day() -> None:
+    assert TradingCalendar().is_trading_day(date(2024, 1, 2)) is True
 
 
 def test_silver_normalizer_rejects_unsupported_dataset(tmp_path: Path) -> None:
@@ -401,8 +500,13 @@ def test_dataset_registry_covers_required_issue_datasets() -> None:
     assert set(DATASET_DEFINITIONS) >= {
         ("krx", "kospi_index"),
         ("krx", "investor_flow"),
+        ("krx", "market_valuation"),
         ("ecos", "base_rate"),
+        ("ecos", "usd_krw"),
+        ("ecos", "bond_yield"),
         ("kosis", "per_pbr_percentiles"),
+        ("kosis", "macro_indicators"),
+        ("data_portal", "sample_dataset"),
     }
 
 

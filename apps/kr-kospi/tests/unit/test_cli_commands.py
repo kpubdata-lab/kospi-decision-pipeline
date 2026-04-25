@@ -15,6 +15,10 @@ from kospi_decision_pipeline_app_kr_kospi.cli import (
     run_build_features_command,
     run_ingest_command,
 )
+from kospi_decision_pipeline_app_kr_kospi.ingest.bronze import (
+    BronzeIngestor,
+    FixtureConnectorRegistry,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -216,6 +220,14 @@ def test_cli_main_routes_build_features_silver_args(monkeypatch: pytest.MonkeyPa
 def test_run_build_features_command_writes_silver_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    bronze_result = BronzeIngestor(output_root=tmp_path / "bronze").ingest(
+        connector=FixtureConnectorRegistry(fixtures_root()).get_connector("krx"),
+        dataset_id="kospi_index",
+        start=parse_date("2024-01-02"),
+        end=parse_date("2024-01-03"),
+    )
+
+    assert bronze_result.entries
     assert (
         run_build_features_command(
             layer="silver",
@@ -231,6 +243,19 @@ def test_run_build_features_command_writes_silver_output(
 
     assert (tmp_path / "silver" / "kospi_index" / "2024-01-02.parquet").is_file()
     assert "wrote kospi_index/2024-01-02.parquet sha256=" in capsys.readouterr().out
+
+
+def test_run_build_features_command_rejects_unsupported_dataset() -> None:
+    with pytest.raises(ValueError, match="unsupported Silver dataset"):
+        _ = run_build_features_command(
+            layer="silver",
+            source="krx",
+            dataset="missing_dataset",
+            start="2024-01-02",
+            end="2024-01-03",
+            bronze_dir="tmp/bronze",
+            output_dir="tmp/silver",
+        )
 
 
 def test_parse_date_and_fixture_root_helpers() -> None:

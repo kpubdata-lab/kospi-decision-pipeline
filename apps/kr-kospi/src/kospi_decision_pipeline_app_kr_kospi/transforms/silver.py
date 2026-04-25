@@ -220,6 +220,25 @@ def _normalize_base_rate(raw_row: RawRow) -> SilverRow:
     return row
 
 
+def _normalize_usd_krw(raw_row: RawRow) -> SilverRow:
+    dataset_id = "usd_krw"
+    row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="value_date")
+    row.update({"usd_krw_rate": _parse_decimal(raw_row, "exchange_rate", dataset_id)})
+    return row
+
+
+def _normalize_bond_yield(raw_row: RawRow) -> SilverRow:
+    dataset_id = "bond_yield"
+    row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="value_date")
+    row.update(
+        {
+            "maturity_code": _parse_text(raw_row, "maturity_code", dataset_id),
+            "yield_rate_pct": _parse_decimal(raw_row, "yield_rate", dataset_id),
+        }
+    )
+    return row
+
+
 def _normalize_per_pbr_percentiles(raw_row: RawRow) -> SilverRow:
     dataset_id = "per_pbr_percentiles"
     row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="value_date")
@@ -227,6 +246,44 @@ def _normalize_per_pbr_percentiles(raw_row: RawRow) -> SilverRow:
         {
             "per_percentile_pct": _parse_decimal(raw_row, "per_percentile", dataset_id),
             "pbr_percentile_pct": _parse_decimal(raw_row, "pbr_percentile", dataset_id),
+        }
+    )
+    return row
+
+
+def _normalize_market_valuation(raw_row: RawRow) -> SilverRow:
+    dataset_id = "market_valuation"
+    row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="trade_date")
+    row.update(
+        {
+            "market_cap_krw": _parse_decimal(raw_row, "market_capitalization", dataset_id),
+            "trailing_per": _parse_decimal(raw_row, "trailing_per", dataset_id),
+            "trailing_pbr": _parse_decimal(raw_row, "trailing_pbr", dataset_id),
+        }
+    )
+    return row
+
+
+def _normalize_macro_indicators(raw_row: RawRow) -> SilverRow:
+    dataset_id = "macro_indicators"
+    row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="value_date")
+    row.update(
+        {
+            "indicator_name": _parse_text(raw_row, "indicator_name", dataset_id),
+            "indicator_value": _parse_decimal(raw_row, "indicator_value", dataset_id),
+            "unit": _parse_text(raw_row, "unit", dataset_id),
+        }
+    )
+    return row
+
+
+def _normalize_sample_dataset(raw_row: RawRow) -> SilverRow:
+    dataset_id = "sample_dataset"
+    row = _normalize_common(raw_row, dataset_id=dataset_id, date_field_name="value_date")
+    row.update(
+        {
+            "metric_name": _parse_text(raw_row, "metric_name", dataset_id),
+            "metric_value": _parse_decimal(raw_row, "metric_value", dataset_id),
         }
     )
     return row
@@ -273,10 +330,15 @@ def _parse_int(raw_row: RawRow, field_name: str, dataset_id: str) -> int:
 DATASET_DEFINITIONS: dict[tuple[str, str], DatasetDefinition] = {
     ("krx", "kospi_index"): DatasetDefinition(normalize_row=_normalize_kospi_index),
     ("krx", "investor_flow"): DatasetDefinition(normalize_row=_normalize_investor_flow),
+    ("krx", "market_valuation"): DatasetDefinition(normalize_row=_normalize_market_valuation),
     ("ecos", "base_rate"): DatasetDefinition(normalize_row=_normalize_base_rate),
+    ("ecos", "usd_krw"): DatasetDefinition(normalize_row=_normalize_usd_krw),
+    ("ecos", "bond_yield"): DatasetDefinition(normalize_row=_normalize_bond_yield),
     ("kosis", "per_pbr_percentiles"): DatasetDefinition(
         normalize_row=_normalize_per_pbr_percentiles
     ),
+    ("kosis", "macro_indicators"): DatasetDefinition(normalize_row=_normalize_macro_indicators),
+    ("data_portal", "sample_dataset"): DatasetDefinition(normalize_row=_normalize_sample_dataset),
 }
 
 

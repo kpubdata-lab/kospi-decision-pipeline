@@ -314,9 +314,12 @@ def _parse_date(raw_row: RawRow, field_name: str, dataset_id: str) -> date:
 def _parse_decimal(raw_row: RawRow, field_name: str, dataset_id: str) -> Decimal:
     value = _require_field(raw_row, field_name, dataset_id)
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except InvalidOperation as exc:
         raise InvalidValueError(dataset_id, field_name, value) from exc
+    if not parsed.is_finite():
+        raise InvalidValueError(dataset_id, field_name, value)
+    return parsed
 
 
 def _parse_int(raw_row: RawRow, field_name: str, dataset_id: str) -> int:

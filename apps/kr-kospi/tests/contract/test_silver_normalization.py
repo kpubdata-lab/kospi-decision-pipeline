@@ -288,6 +288,28 @@ def test_silver_normalizer_raises_typed_error_for_invalid_value(tmp_path: Path) 
         _ = silver_normalizer.normalize_parquet(bronze_path)
 
 
+@pytest.mark.parametrize("invalid_value", ["NaN", "Infinity"])
+def test_silver_normalizer_rejects_non_finite_decimal_values(
+    tmp_path: Path, invalid_value: str
+) -> None:
+    bronze_path = tmp_path / "bronze" / "ecos" / "base_rate" / "2024-01-02.parquet"
+    _write_bronze_partition(
+        bronze_path,
+        [
+            {
+                "source_name": "ecos",
+                "source_series_id": "base_rate",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "value_date": "2024-01-02",
+                "base_rate": invalid_value,
+            }
+        ],
+    )
+
+    with pytest.raises(InvalidValueError, match="base_rate"):
+        _ = SilverNormalizer(output_root=tmp_path / "silver").normalize_parquet(bronze_path)
+
+
 def test_silver_normalizer_raises_typed_error_for_non_trading_day(tmp_path: Path) -> None:
     bronze_ingestor = BronzeIngestor(
         output_root=tmp_path / "bronze",

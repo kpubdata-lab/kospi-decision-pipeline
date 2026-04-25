@@ -353,6 +353,17 @@ def test_cli_main_routes_build_features_silver_args(monkeypatch: pytest.MonkeyPa
     }
 
 
+def test_cli_main_requires_source_and_dataset_for_silver(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        _ = main(
+            ["build-features", "--layer", "silver", "--from", "2024-01-02", "--to", "2024-01-03"]
+        )
+
+    assert "--source and --dataset are required when --layer silver" in capsys.readouterr().err
+
+
 def test_cli_main_routes_build_features_gold_args(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -490,4 +501,85 @@ def test_run_build_features_command_writes_gold_output(
 
     output_path = tmp_path / "gold" / GoldFeatureBuilder.OUTPUT_FILE_NAME
     assert output_path.is_file()
+    assert "wrote decision_features.parquet sha256=" in capsys.readouterr().out
+
+
+def test_cli_main_uses_gold_default_output_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_build_features_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_build_features_command",
+        fake_run_build_features_command,
+    )
+
+    assert (
+        main(
+            [
+                "build-features",
+                "--layer",
+                "gold",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-12-31",
+            ]
+        )
+        == 0
+    )
+    assert captured["output_dir"] == "data/gold"
+
+
+def test_run_build_features_command_writes_all_layers_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import GoldFeatureBuilder
+    from kospi_decision_pipeline_app_kr_kospi.transforms.silver import SilverNormalizer
+
+    written_silver_path = tmp_path / "silver" / "kospi_index" / "2024-01-02.parquet"
+    written_silver_path.parent.mkdir(parents=True, exist_ok=True)
+    written_silver_path.write_bytes(b"silver")
+    written_gold_path = tmp_path / "gold" / GoldFeatureBuilder.OUTPUT_FILE_NAME
+    written_gold_path.parent.mkdir(parents=True, exist_ok=True)
+    WRITE_TABLE(
+        _table_from_pylist([{"as_of_date": date(2024, 1, 3), "kospi_close": 1.0}]),
+        written_gold_path,
+        compression="snappy",
+    )
+
+    def fake_normalize_dataset(self: SilverNormalizer, **_: object) -> tuple[Path, ...]:
+        return (written_silver_path,)
+
+    def fake_build(self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
+        assert silver_root == tmp_path / "silver"
+        assert start.isoformat() == "2024-01-02"
+        assert end.isoformat() == "2024-01-03"
+        return written_gold_path
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SilverNormalizer, "normalize_dataset", fake_normalize_dataset)
+    monkeypatch.setattr(GoldFeatureBuilder, "build", fake_build)
+
+    try:
+        assert (
+            run_build_features_command(
+                layer="all",
+                source="",
+                dataset="",
+                start="2024-01-02",
+                end="2024-01-03",
+                bronze_dir=str(tmp_path / "bronze"),
+                silver_dir=str(tmp_path / "silver"),
+                output_dir=str(tmp_path / "gold"),
+            )
+            == 0
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert written_silver_path.is_file()
+    assert written_gold_path.is_file()
     assert "wrote decision_features.parquet sha256=" in capsys.readouterr().out

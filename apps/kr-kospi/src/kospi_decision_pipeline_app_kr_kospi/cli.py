@@ -62,10 +62,11 @@ def run_build_features_command(
 ) -> int:
     start_date = parse_date(start)
     end_date = parse_date(end)
+    resolved_output_dir = Path(output_dir)
     if layer == "silver":
         if (source, dataset) not in DATASET_DEFINITIONS:
             raise ValueError(f"unsupported Silver dataset: {source}/{dataset}")
-        normalizer = SilverNormalizer(output_root=Path(output_dir))
+        normalizer = SilverNormalizer(output_root=resolved_output_dir)
         written_paths = normalizer.normalize_dataset(
             bronze_root=Path(bronze_dir),
             source_name=source,
@@ -74,11 +75,11 @@ def run_build_features_command(
             end=end_date,
         )
         for path in written_paths:
-            relative_path = path.relative_to(Path(output_dir))
+            relative_path = path.relative_to(resolved_output_dir)
             print(f"wrote {relative_path.as_posix()} sha256={silver_sha256(path)}")
         return 0
     if layer == "gold":
-        output_path = GoldFeatureBuilder(output_root=Path(output_dir)).build(
+        output_path = GoldFeatureBuilder(output_root=resolved_output_dir).build(
             silver_root=Path(silver_dir),
             start=start_date,
             end=end_date,
@@ -99,7 +100,7 @@ def run_build_features_command(
             for path in written_paths:
                 relative_path = path.relative_to(silver_root)
                 print(f"wrote {relative_path.as_posix()} sha256={silver_sha256(path)}")
-        output_path = GoldFeatureBuilder(output_root=Path(output_dir)).build(
+        output_path = GoldFeatureBuilder(output_root=resolved_output_dir).build(
             silver_root=silver_root,
             start=start_date,
             end=end_date,
@@ -118,7 +119,7 @@ class _CliArgs(argparse.Namespace):
     end: str = ""
     bronze_dir: str = "data/bronze"
     silver_dir: str = "data/silver"
-    output_dir: str = "data/bronze"
+    output_dir: str = ""
     live: bool = False
 
 
@@ -147,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     _ = build_features_parser.add_argument("--to", dest="end", required=True)
     _ = build_features_parser.add_argument("--bronze-dir", default="data/bronze")
     _ = build_features_parser.add_argument("--silver-dir", default="data/silver")
-    _ = build_features_parser.add_argument("--out", dest="output_dir", default="data/silver")
+    _ = build_features_parser.add_argument("--out", dest="output_dir", default="")
     for name in ("run", "backtest", "report"):
         _ = sub.add_parser(name, help=f"{name} (not yet implemented)")
     args = parser.parse_args(argv, namespace=_CliArgs())
@@ -166,15 +167,21 @@ def main(argv: list[str] | None = None) -> int:
             live=live_mode,
         )
     if cmd == "build-features":
+        layer = str(args.layer)
+        if layer == "silver" and (str(args.source) == "" or str(args.dataset) == ""):
+            build_features_parser.error("--source and --dataset are required when --layer silver")
+        output_dir = str(args.output_dir)
+        if output_dir == "":
+            output_dir = "data/gold" if layer in {"gold", "all"} else "data/silver"
         return run_build_features_command(
-            layer=str(args.layer),
+            layer=layer,
             source=str(args.source),
             dataset=str(args.dataset),
             start=str(args.start),
             end=str(args.end),
             bronze_dir=str(args.bronze_dir),
             silver_dir=str(args.silver_dir),
-            output_dir=str(args.output_dir),
+            output_dir=output_dir,
         )
     print(f"{cmd}: not yet implemented")
     return 0

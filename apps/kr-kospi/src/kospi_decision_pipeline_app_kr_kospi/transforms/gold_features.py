@@ -42,6 +42,8 @@ def _table_from_pylist(rows: list[dict[str, object]]) -> _ArrowTable:
 READ_TABLE = cast(_ReadTable, getattr(pq, "read_table"))
 WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
 TRADING_DAYS_FOR_PERCENTILE = 252
+REALIZED_VOL_WINDOW = 20
+ATR_WINDOW = 14
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,9 @@ class DailyInputs:
     kr_bond_yield_3y: float
     kospi_per: float
     kospi_pbr: float
+
+
+GoldRow = dict[str, date | float]
 
 
 class GoldFeatureError(ValueError):
@@ -160,6 +165,10 @@ def _rolling_percentile_ignore_none(
     return _percentile_rank(filtered, current_value)
 
 
+def _required_history_for_realized_vol_percentile() -> int:
+    return REALIZED_VOL_WINDOW + TRADING_DAYS_FOR_PERCENTILE
+
+
 @final
 class GoldFeatureBuilder:
     OUTPUT_FILE_NAME = "decision_features.parquet"
@@ -187,7 +196,7 @@ class GoldFeatureBuilder:
         gold_rows = self._build_rows(daily_inputs)
         output_path = self._output_root / self.OUTPUT_FILE_NAME
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        table = _table_from_pylist(gold_rows)
+        table = _table_from_pylist(cast(list[dict[str, object]], gold_rows))
         assert_no_forbidden_gold_columns(table.column_names)
         WRITE_TABLE(table, output_path, compression="snappy")
         return output_path
@@ -245,16 +254,15 @@ class GoldFeatureBuilder:
         preferred_rows = [
             row for row in rows if _text_value(row, "maturity_code", "bond_yield") == "3Y"
         ]
-        selected_rows = preferred_rows if preferred_rows else rows
-        if len(selected_rows) != 1:
-            raise InvalidGoldInputError("bond_yield", "maturity_code", selected_rows)
-        row = selected_rows[0]
+        if len(preferred_rows) != 1:
+            raise InvalidGoldInputError("bond_yield", "maturity_code", rows)
+        row = preferred_rows[0]
         row_date = _date_value(row, "as_of_date", "bond_yield")
         if row_date != as_of_date:
             raise InvalidGoldInputError("bond_yield", "as_of_date", row_date)
         return row
 
-    def _build_rows(self, daily_inputs: Sequence[DailyInputs]) -> list[dict[str, object]]:
+    def _build_rows(self, daily_inputs: Sequence[DailyInputs]) -> list[GoldRow]:
         closes = [row.kospi_close for row in daily_inputs]
         highs = [row.kospi_high for row in daily_inputs]
         lows = [row.kospi_low for row in daily_inputs]
@@ -274,17 +282,20 @@ class GoldFeatureBuilder:
 
         realized_vols: list[float | None] = []
         for index in range(len(daily_inputs)):
-            if index < 20:
+            if index < REALIZED_VOL_WINDOW:
                 realized_vols.append(None)
                 continue
             trailing_returns = [
-                value for value in daily_returns[(index - 19) : index + 1] if value is not None
+                value
+                for value in daily_returns[(index - (REALIZED_VOL_WINDOW - 1)) : index + 1]
+                if value is not None
             ]
             realized_vols.append(pstdev(trailing_returns) * sqrt(252.0))
 
-        rows: list[dict[str, object]] = []
+        rows: list[GoldRow] = []
+        minimum_index = _required_history_for_realized_vol_percentile() - 1
         for index in range(len(daily_inputs)):
-            if index < TRADING_DAYS_FOR_PERCENTILE - 1:
+            if index < minimum_index:
                 continue
             close_window = closes[(index - 19) : index + 1]
             close_window_min = min(close_window)
@@ -298,7 +309,7 @@ class GoldFeatureBuilder:
             realized_vol = realized_vols[index]
             if realized_vol is None:
                 raise InvalidGoldInputError("kospi_index", "kospi_realized_vol_20d", realized_vol)
-            row: dict[str, object] = {
+            row: GoldRow = {
                 "as_of_date": daily_inputs[index].as_of_date,
                 "kospi_close": closes[index],
                 "kospi_return_1d": (closes[index] / closes[index - 1]) - 1.0,
@@ -319,6 +330,10 @@ class GoldFeatureBuilder:
                 "institution_net_buy_krw_5d_sum": sum(institution_flows[(index - 4) : index + 1]),
                 "individual_net_buy_krw_5d_sum": sum(individual_flows[(index - 4) : index + 1]),
                 "foreign_net_buy_5d_pct_of_turnover": sum(foreign_flows[(index - 4) : index + 1])
+                / sum(turnover[(index - 4) : index + 1]),
+                "institution_net_buy_5d_pct_of_turnover": sum(
+                    institution_flows[(index - 4) : index + 1]
+                )
                 / sum(turnover[(index - 4) : index + 1]),
                 "kospi_per": pers[index],
                 "kospi_pbr": pbrs[index],

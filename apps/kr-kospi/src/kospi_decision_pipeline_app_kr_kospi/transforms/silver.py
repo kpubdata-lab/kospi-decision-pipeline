@@ -297,8 +297,19 @@ def _require_field(raw_row: RawRow, field_name: str, dataset_id: str) -> object:
 
 def _parse_text(raw_row: RawRow, field_name: str, dataset_id: str) -> str:
     value = _require_field(raw_row, field_name, dataset_id)
-    text = str(value)
-    if text == "":
+    text = str(value).strip()
+    if text.lower() in {
+        "",
+        "nan",
+        "+nan",
+        "-nan",
+        "inf",
+        "+inf",
+        "-inf",
+        "infinity",
+        "+infinity",
+        "-infinity",
+    }:
         raise InvalidValueError(dataset_id, field_name, value)
     return text
 

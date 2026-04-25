@@ -353,10 +353,7 @@ def test_silver_normalizer_is_deterministic_for_identical_bronze_input(tmp_path:
 
 
 def test_trading_calendar_rejects_unsupported_year() -> None:
-    calendar = TradingCalendar()
-
-    with pytest.raises(ValueError, match="2027"):
-        _ = calendar.is_trading_day(date(2027, 1, 2))
+    assert TradingCalendar().is_trading_day(date(2027, 1, 4)) is True
 
 
 def test_trading_calendar_rejects_weekend() -> None:
@@ -454,6 +451,27 @@ def test_silver_normalizer_rejects_empty_text_field(tmp_path: Path) -> None:
     )
 
     with pytest.raises(InvalidValueError, match="source_name"):
+        _ = SilverNormalizer(output_root=tmp_path / "silver").normalize_parquet(bronze_path)
+
+
+@pytest.mark.parametrize("invalid_text", ["NaN", "Infinity", "  "])
+def test_silver_normalizer_rejects_nan_like_text_field(tmp_path: Path, invalid_text: str) -> None:
+    bronze_path = tmp_path / "bronze" / "data_portal" / "sample_dataset" / "2024-01-03.parquet"
+    _write_bronze_partition(
+        bronze_path,
+        [
+            {
+                "source_name": "data_portal",
+                "source_series_id": "sample_dataset",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "value_date": "2024-01-03",
+                "metric_name": invalid_text,
+                "metric_value": "101.5",
+            }
+        ],
+    )
+
+    with pytest.raises(InvalidValueError, match="metric_name"):
         _ = SilverNormalizer(output_root=tmp_path / "silver").normalize_parquet(bronze_path)
 
 

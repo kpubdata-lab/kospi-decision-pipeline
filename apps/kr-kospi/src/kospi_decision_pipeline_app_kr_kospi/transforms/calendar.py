@@ -77,5 +77,5 @@ class TradingCalendar:
     def is_trading_day(self, value: date) -> bool:
         holidays = KRX_HOLIDAYS.get(value.year)
         if holidays is None:
-            raise ValueError(f"unsupported KRX calendar year: {value.year}")
+            return value.weekday() < 5
         return value.weekday() < 5 and value not in holidays

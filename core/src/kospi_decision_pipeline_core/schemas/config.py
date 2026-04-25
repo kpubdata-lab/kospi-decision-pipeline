@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import isclose
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, Literal, Mapping, Sequence, TypedDict, cast
+from typing import Final, Literal, TypedDict, cast
 
 import yaml
 
@@ -50,6 +51,10 @@ class AgentsConfigDict(_AgentsConfigRequiredDict, total=False):
     rule_versions: dict[str, str]
 
 
+def _empty_rule_versions() -> Mapping[str, str]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class AgentWeightConfig:
     values: Mapping[str, float]
@@ -72,8 +77,12 @@ class ThresholdsConfig:
     down: float
 
     def __post_init__(self) -> None:
-        if self.up <= self.down:
+        up = _ensure_float(self.up, context="up")
+        down = _ensure_float(self.down, context="down")
+        if up <= down:
             raise ValueError("threshold up must be greater than threshold down")
+        object.__setattr__(self, "up", up)
+        object.__setattr__(self, "down", down)
 
     def to_dict(self) -> ThresholdsConfigDict:
         return {"up": self.up, "down": self.down}
@@ -83,7 +92,7 @@ class ThresholdsConfig:
 class AgentsConfig:
     weights: AgentWeightConfig
     thresholds: ThresholdsConfig
-    rule_versions: Mapping[str, str] = field(default_factory=dict)
+    rule_versions: Mapping[str, str] = field(default_factory=_empty_rule_versions)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -111,10 +120,12 @@ class ScenarioConfig:
     agents: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        scenario_id = _ensure_string(self.scenario_id, context="scenario_id")
         if self.horizon != "next_day":
             raise ValueError("horizon must be 'next_day'")
         agent_ids = tuple(_normalize_string_sequence(self.agents, context="agents"))
         _validate_known_agent_ids(agent_ids, context="agents")
+        object.__setattr__(self, "scenario_id", scenario_id)
         object.__setattr__(self, "agents", agent_ids)
 
     def to_dict(self) -> ScenarioConfigDict:
@@ -129,7 +140,7 @@ def load_agents_config(path: Path) -> AgentsConfig:
     payload = _load_yaml_mapping(path)
     weights_payload = _require_mapping(payload, "weights")
     thresholds_payload = _require_mapping(payload, "thresholds")
-    rule_versions_payload = payload.get("rule_versions", {})
+    rule_versions_payload: object = payload["rule_versions"] if "rule_versions" in payload else {}
 
     thresholds = ThresholdsConfig(
         up=_require_float(thresholds_payload, "up"),
@@ -154,7 +165,7 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
 
 
 def _load_yaml_mapping(path: Path) -> Mapping[str, object]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loaded = cast(object, yaml.safe_load(path.read_text(encoding="utf-8")))
     return _ensure_mapping(loaded, context=str(path))
 
 
@@ -186,14 +197,15 @@ def _require_horizon(payload: Mapping[str, object]) -> Literal["next_day"]:
     horizon = _require_string(payload, "horizon")
     if horizon != "next_day":
         raise ValueError("horizon must be 'next_day'")
-    return cast(Literal["next_day"], horizon)
+    return "next_day"
 
 
 def _ensure_mapping(value: object, context: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{context} must be a mapping")
-    if not all(isinstance(key, str) for key in value):
-        raise ValueError(f"{context} keys must be strings")
+    for raw_key in cast(Iterable[object], value.keys()):
+        if not isinstance(raw_key, str):
+            raise ValueError(f"{context} keys must be strings")
     return cast(Mapping[str, object], value)
 
 
@@ -236,7 +248,7 @@ def _normalize_string_sequence(value: object, context: str) -> tuple[str, ...]:
     return tuple(_ensure_string(item, context=f"{context}[]") for item in sequence)
 
 
-def _validate_known_agent_ids(agent_ids: Sequence[str], context: str) -> None:
+def _validate_known_agent_ids(agent_ids: Iterable[str], context: str) -> None:
     unknown_agent_ids = sorted(
         agent_id for agent_id in agent_ids if agent_id not in KNOWN_AGENT_IDS
     )

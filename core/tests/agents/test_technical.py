@@ -142,9 +142,9 @@ def test_technical_agent_raises_when_required_threshold_is_missing() -> None:
         raise AssertionError("expected ValueError for missing threshold")
 
 
-def _truth_table_rows() -> (
-    tuple[tuple[dict[str, float], Literal["up", "down", "skip"], float], ...]
-):
+def _truth_table_rows() -> tuple[
+    tuple[dict[str, float], Literal["up", "down", "skip"], float], ...
+]:
     return (
         (
             {

@@ -31,8 +31,11 @@ def make_row(
     institution_5d: float,
     individual_5d: float,
     foreign_pct: float,
-    as_of_date: date = date(2026, 4, 24),
+    as_of_date: date | None = None,
 ) -> AgentFeatureRow:
+    if as_of_date is None:
+        as_of_date = date(2026, 4, 24)
+
     return AgentFeatureRow.from_mapping(
         {
             "as_of_date": as_of_date,
@@ -198,6 +201,43 @@ def test_agent_feature_row_rejects_non_whitelisted_columns() -> None:
                 "institution_net_buy_5d_pct_of_turnover": 0.01,
             }
         )
+
+
+def test_agent_feature_row_rejects_missing_required_columns() -> None:
+    with pytest.raises(LeakageError, match="missing required columns"):
+        _ = AgentFeatureRow.from_mapping(
+            {
+                "as_of_date": date(2026, 4, 24),
+                "foreign_net_buy_krw_5d_sum": 1.0,
+                "institution_net_buy_krw_5d_sum": 0.0,
+                "individual_net_buy_krw_5d_sum": -1.0,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("as_of_date", "2026-04-24", "as_of_date must be a date"),
+        ("foreign_net_buy_krw_5d_sum", True, "foreign_net_buy_krw_5d_sum must be a float"),
+    ],
+)
+def test_agent_feature_row_rejects_invalid_scalar_types(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    payload: dict[str, object] = {
+        "as_of_date": date(2026, 4, 24),
+        "foreign_net_buy_krw_5d_sum": 1.0,
+        "institution_net_buy_krw_5d_sum": 0.0,
+        "individual_net_buy_krw_5d_sum": -1.0,
+        "foreign_net_buy_5d_pct_of_turnover": 0.02,
+    }
+    payload[field] = value
+
+    with pytest.raises(LeakageError, match=match):
+        _ = AgentFeatureRow.from_mapping(payload)
 
 
 def test_flow_agent_exposes_spec_whitelist_verbatim() -> None:

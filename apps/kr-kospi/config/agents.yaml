@@ -4,6 +4,61 @@ weights:
   flow: 0.25
   valuation: 0.10
   volatility: 0.15
+
 thresholds:
   up: 0.25
   down: -0.25
+
+agents:
+  technical:
+    rule_version: technical@1.0.0
+    thresholds:
+      ma5_gap_up_min: 0.005
+      close_position_up_min: 0.60
+      return_5d_up_min: 0.010
+      ma5_gap_down_max: -0.005
+      close_position_down_max: 0.40
+      return_5d_down_max: -0.010
+
+  domestic_macro:
+    rule_version: domestic_macro@1.0.0
+    thresholds:
+      bok_rate_change_up_max: 0.00
+      usdkrw_return_5d_up_max: 0.010
+      bond_yield_change_30d_up_max: 0.05
+      bok_rate_change_down_min: 0.25
+      usdkrw_return_5d_down_min: 0.020
+      bond_yield_change_30d_down_min: 0.10
+      usdkrw_return_5d_mixed_pos_min: 0.015
+      usdkrw_return_5d_mixed_neg_max: -0.015
+      bond_yield_change_30d_mixed_pos_min: 0.05
+      bond_yield_change_30d_mixed_neg_max: 0.00
+
+  flow:
+    rule_version: flow@1.0.0
+    thresholds:
+      foreign_pct_up_min: 0.010
+      foreign_pct_down_max: -0.010
+      foreign_pct_neutral_abs_max: 0.003
+
+  valuation:
+    rule_version: valuation@1.0.0
+    thresholds:
+      per_percentile_up_max: 0.30
+      pbr_percentile_up_max: 0.30
+      per_percentile_down_min: 0.70
+      pbr_percentile_down_min: 0.70
+      fair_value_center: 0.50
+      fair_value_half_band: 0.10
+
+  volatility:
+    rule_version: volatility@1.0.0
+    thresholds:
+      realized_vol_20d_up_max: 0.18
+      realized_vol_pct_up_max: 0.30
+      atr_14d_up_max: 35.0
+      realized_vol_pct_down_min: 0.80
+      realized_vol_20d_down_min: 0.25
+      atr_14d_down_min: 45.0
+      realized_vol_pct_mid_low: 0.30
+      realized_vol_pct_mid_high: 0.80

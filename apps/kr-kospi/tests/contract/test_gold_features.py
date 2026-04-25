@@ -169,6 +169,10 @@ def _build_gold(root: Path, *, days: list[date]) -> Path:
     )
 
 
+def _percentile_rank(values: list[float], current_value: float) -> float:
+    return sum(1 for value in values if value <= current_value) / len(values)
+
+
 def test_gold_feature_builder_computes_trailing_only_features(tmp_path: Path) -> None:
     days = _trading_days(252)
     silver_root = tmp_path / "silver"
@@ -196,6 +200,14 @@ def test_gold_feature_builder_computes_trailing_only_features(tmp_path: Path) ->
         (close_prices[index] / close_prices[index - 1]) - 1 for index in range(1, len(close_prices))
     ]
     realized_vol = pstdev(daily_returns[-20:]) * sqrt(252)
+    realized_vols: list[float] = []
+    for index in range(20, len(close_prices)):
+        returns_window = [
+            (close_prices[inner_index] / close_prices[inner_index - 1]) - 1
+            for inner_index in range(index - 19, index + 1)
+        ]
+        realized_vols.append(pstdev(returns_window) * sqrt(252))
+    realized_vol_percentile = _percentile_rank(realized_vols, realized_vols[-1])
 
     assert row["as_of_date"] == days[-1]
     assert row["kospi_close"] == pytest.approx(close)
@@ -223,7 +235,7 @@ def test_gold_feature_builder_computes_trailing_only_features(tmp_path: Path) ->
     assert row["kospi_per_percentile_252d"] == pytest.approx(1.0)
     assert row["kospi_pbr_percentile_252d"] == pytest.approx(1.0)
     assert row["kospi_realized_vol_20d"] == pytest.approx(realized_vol)
-    assert row["kospi_realized_vol_20d_percentile_252d"] == pytest.approx(1.0)
+    assert row["kospi_realized_vol_20d_percentile_252d"] == pytest.approx(realized_vol_percentile)
     assert row["kospi_atr_14d"] == pytest.approx(10.0)
     assert not any(column.startswith("target_") for column in row)
     assert not any(column.startswith("future_") for column in row)

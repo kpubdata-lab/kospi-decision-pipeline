@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 import runpy
+from typing import Protocol, cast
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi import __version__
@@ -19,6 +24,7 @@ from kospi_decision_pipeline_app_kr_kospi.ingest.bronze import (
     BronzeIngestor,
     FixtureConnectorRegistry,
 )
+from kospi_decision_pipeline_app_kr_kospi.transforms.calendar import TradingCalendar
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -27,6 +33,135 @@ ENV = {
     + ":"
     + str(REPO_ROOT / "apps" / "kr-kospi" / "src"),
 }
+
+
+class _ArrowTable(Protocol):
+    def to_pylist(self) -> list[dict[str, object]]: ...
+
+
+class _ArrowTableFactory(Protocol):
+    def from_pylist(self, mapping: list[dict[str, object]]) -> _ArrowTable: ...
+
+
+class _WriteTable(Protocol):
+    def __call__(self, table: _ArrowTable, where: Path, *, compression: str) -> None: ...
+
+
+def _table_from_pylist(rows: list[dict[str, object]]) -> _ArrowTable:
+    factory = cast(_ArrowTableFactory, pa.Table)
+    return factory.from_pylist(rows)
+
+
+WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
+
+
+def _write_silver_partition(
+    root: Path,
+    dataset_id: str,
+    partition_date: date,
+    row: dict[str, object],
+) -> None:
+    path = root / dataset_id / f"{partition_date.isoformat()}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    WRITE_TABLE(_table_from_pylist([row]), path, compression="snappy")
+
+
+def _trading_days(count: int) -> list[date]:
+    calendar = TradingCalendar()
+    current = date(2024, 1, 2)
+    days: list[date] = []
+    while len(days) < count:
+        if calendar.is_trading_day(current):
+            days.append(current)
+        current += timedelta(days=1)
+    return days
+
+
+def _build_complete_silver_history(root: Path, days: list[date]) -> None:
+    for index, as_of_date in enumerate(days):
+        close = Decimal(100 + index)
+        _write_silver_partition(
+            root,
+            "kospi_index",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "krx",
+                "source_series_id": "kospi_index",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "open": close - Decimal("1"),
+                "high": close + Decimal("5"),
+                "low": close - Decimal("5"),
+                "close": close,
+                "volume_shares": 1_000_000 + index,
+                "turnover_krw": Decimal(1000 + (10 * index)),
+            },
+        )
+        _write_silver_partition(
+            root,
+            "investor_flow",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "krx",
+                "source_series_id": "investor_flow",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "foreign_net_buy_krw": Decimal(100 + (2 * index)),
+                "institution_net_buy_krw": Decimal(200 + (3 * index)),
+                "individual_net_buy_krw": Decimal(-(300 + (5 * index))),
+            },
+        )
+        _write_silver_partition(
+            root,
+            "base_rate",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "ecos",
+                "source_series_id": "base_rate",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "base_rate_pct": Decimal("3.00") + (Decimal(index) / Decimal("100")),
+            },
+        )
+        _write_silver_partition(
+            root,
+            "usd_krw",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "ecos",
+                "source_series_id": "usd_krw",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "usd_krw_rate": Decimal(1200 + index),
+            },
+        )
+        _write_silver_partition(
+            root,
+            "bond_yield",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "ecos",
+                "source_series_id": "bond_yield",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "maturity_code": "3Y",
+                "yield_rate_pct": Decimal("2.00") + (Decimal(index) / Decimal("100")),
+            },
+        )
+        _write_silver_partition(
+            root,
+            "market_valuation",
+            as_of_date,
+            {
+                "as_of_date": as_of_date,
+                "source_name": "krx",
+                "source_series_id": "market_valuation",
+                "fetched_at": "2024-01-10T09:00:00+00:00",
+                "market_cap_krw": Decimal(2_000_000 + (1000 * index)),
+                "trailing_per": Decimal("10.00") + (Decimal(index) / Decimal("10")),
+                "trailing_pbr": Decimal("1.00") + (Decimal(index) / Decimal("100")),
+            },
+        )
 
 
 def test_cli_stub_subcommand_output() -> None:
@@ -335,7 +470,6 @@ def test_run_build_features_command_writes_gold_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import GoldFeatureBuilder
-    from tests.contract.test_gold_features import _build_complete_silver_history, _trading_days
 
     days = _trading_days(252)
     _build_complete_silver_history(tmp_path / "silver", days)

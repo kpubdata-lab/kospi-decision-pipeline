@@ -18,6 +18,15 @@ AgentId = Literal[
     "volatility",
     "decision",
 ]
+RULE_AGENT_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "technical",
+        "domestic_macro",
+        "flow",
+        "valuation",
+        "volatility",
+    }
+)
 KNOWN_AGENT_IDS: Final[frozenset[str]] = frozenset(
     {
         "technical",
@@ -26,6 +35,72 @@ KNOWN_AGENT_IDS: Final[frozenset[str]] = frozenset(
         "valuation",
         "volatility",
         "decision",
+    }
+)
+REQUIRED_AGENT_THRESHOLD_KEYS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "technical@1.0.0": frozenset(
+            {
+                "ma5_gap_up_min",
+                "close_position_up_min",
+                "return_5d_up_min",
+                "ma5_gap_down_max",
+                "close_position_down_max",
+                "return_5d_down_max",
+            }
+        ),
+        "domestic_macro@1.0.0": frozenset(
+            {
+                "bok_rate_change_up_max",
+                "usdkrw_return_5d_up_max",
+                "bond_yield_change_30d_up_max",
+                "bok_rate_change_down_min",
+                "usdkrw_return_5d_down_min",
+                "bond_yield_change_30d_down_min",
+                "usdkrw_return_5d_mixed_pos_min",
+                "usdkrw_return_5d_mixed_neg_max",
+                "bond_yield_change_30d_mixed_pos_min",
+                "bond_yield_change_30d_mixed_neg_max",
+            }
+        ),
+        "flow@1.0.0": frozenset(
+            {
+                "foreign_pct_up_min",
+                "foreign_pct_down_max",
+                "foreign_pct_neutral_abs_max",
+            }
+        ),
+        "valuation@1.0.0": frozenset(
+            {
+                "per_percentile_up_max",
+                "pbr_percentile_up_max",
+                "per_percentile_down_min",
+                "pbr_percentile_down_min",
+                "fair_value_center",
+                "fair_value_half_band",
+            }
+        ),
+        "volatility@1.0.0": frozenset(
+            {
+                "realized_vol_20d_up_max",
+                "realized_vol_pct_up_max",
+                "atr_14d_up_max",
+                "realized_vol_pct_down_min",
+                "realized_vol_20d_down_min",
+                "atr_14d_down_min",
+                "realized_vol_pct_mid_low",
+                "realized_vol_pct_mid_high",
+            }
+        ),
+    }
+)
+EXPECTED_RULE_VERSIONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "technical": "technical@1.0.0",
+        "domestic_macro": "domestic_macro@1.0.0",
+        "flow": "flow@1.0.0",
+        "valuation": "valuation@1.0.0",
+        "volatility": "volatility@1.0.0",
     }
 )
 WEIGHT_TOLERANCE: Final[float] = 1e-9
@@ -45,14 +120,16 @@ class ScenarioConfigDict(TypedDict):
 class _AgentsConfigRequiredDict(TypedDict):
     weights: dict[str, float]
     thresholds: ThresholdsConfigDict
+    agents: dict[str, "AgentRuleConfigDict"]
 
 
-class AgentsConfigDict(_AgentsConfigRequiredDict, total=False):
-    rule_versions: dict[str, str]
+class AgentsConfigDict(_AgentsConfigRequiredDict):
+    pass
 
 
-def _empty_rule_versions() -> Mapping[str, str]:
-    return {}
+class AgentRuleConfigDict(TypedDict):
+    rule_version: str
+    thresholds: dict[str, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +138,7 @@ class AgentWeightConfig:
 
     def __post_init__(self) -> None:
         weights = _normalize_float_mapping(self.values, context="weights")
-        _validate_known_agent_ids(weights.keys(), context="weights")
+        _validate_rule_agent_ids(weights.keys(), context="weights")
         total = sum(weights.values())
         if not isclose(total, 1.0, rel_tol=0.0, abs_tol=WEIGHT_TOLERANCE):
             raise ValueError("weights must sum to 1.0 ± 1e-9")
@@ -89,28 +166,48 @@ class ThresholdsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentRuleConfig:
+    rule_version: str
+    thresholds: Mapping[str, float]
+
+    def __post_init__(self) -> None:
+        rule_version = _ensure_string(self.rule_version, context="rule_version")
+        if rule_version == "":
+            raise ValueError("rule_version must be a non-empty string")
+        object.__setattr__(self, "rule_version", rule_version)
+        object.__setattr__(
+            self,
+            "thresholds",
+            MappingProxyType(dict(_normalize_float_mapping(self.thresholds, context="thresholds"))),
+        )
+
+    def to_dict(self) -> AgentRuleConfigDict:
+        return {
+            "rule_version": self.rule_version,
+            "thresholds": dict(self.thresholds),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class AgentsConfig:
     weights: AgentWeightConfig
     thresholds: ThresholdsConfig
-    rule_versions: Mapping[str, str] = field(default_factory=_empty_rule_versions)
+    agents: Mapping[str, AgentRuleConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "rule_versions",
-            MappingProxyType(
-                dict(_normalize_string_mapping(self.rule_versions, context="rule_versions"))
-            ),
-        )
+        agent_configs = _normalize_agent_rules_mapping(self.agents, context="agents")
+        _validate_matching_agent_keys(self.weights.values.keys(), agent_configs.keys())
+        object.__setattr__(self, "agents", MappingProxyType(dict(agent_configs)))
 
     def to_dict(self) -> AgentsConfigDict:
-        result: AgentsConfigDict = {
+        return {
             "weights": self.weights.to_dict(),
             "thresholds": self.thresholds.to_dict(),
+            "agents": {
+                agent_name: agent_config.to_dict()
+                for agent_name, agent_config in self.agents.items()
+            },
         }
-        if self.rule_versions:
-            result["rule_versions"] = dict(self.rule_versions)
-        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,16 +237,21 @@ def load_agents_config(path: Path) -> AgentsConfig:
     payload = _load_yaml_mapping(path)
     weights_payload = _require_mapping(payload, "weights")
     thresholds_payload = _require_mapping(payload, "thresholds")
-    rule_versions_payload: object = payload["rule_versions"] if "rule_versions" in payload else {}
+    if "agents" not in payload:
+        raise ValueError("agents block is required")
+    agents_payload = _require_mapping(payload, "agents")
+
+    weights = AgentWeightConfig(_normalize_float_mapping(weights_payload, context="weights"))
+    _validate_matching_agent_keys(weights.values.keys(), agents_payload.keys())
 
     thresholds = ThresholdsConfig(
         up=_require_float(thresholds_payload, "up"),
         down=_require_float(thresholds_payload, "down"),
     )
     return AgentsConfig(
-        weights=AgentWeightConfig(_normalize_float_mapping(weights_payload, context="weights")),
+        weights=weights,
         thresholds=thresholds,
-        rule_versions=_normalize_string_mapping(rule_versions_payload, context="rule_versions"),
+        agents=_load_agent_rules(agents_payload),
     )
 
 
@@ -235,17 +337,80 @@ def _normalize_float_mapping(value: object, context: str) -> dict[str, float]:
     }
 
 
-def _normalize_string_mapping(value: object, context: str) -> dict[str, str]:
-    payload = _ensure_mapping(value, context=context)
-    return {
-        key: _ensure_string(raw_value, context=f"{context}.{key}")
-        for key, raw_value in payload.items()
-    }
-
-
 def _normalize_string_sequence(value: object, context: str) -> tuple[str, ...]:
     sequence = _ensure_sequence(value, context=context)
     return tuple(_ensure_string(item, context=f"{context}[]") for item in sequence)
+
+
+def _normalize_agent_rules_mapping(value: object, context: str) -> dict[str, AgentRuleConfig]:
+    payload = _ensure_mapping(value, context=context)
+    return {
+        agent_name: _ensure_agent_rule_config(agent_rule_config, context=f"{context}.{agent_name}")
+        for agent_name, agent_rule_config in payload.items()
+    }
+
+
+def _ensure_agent_rule_config(value: object, context: str) -> AgentRuleConfig:
+    if not isinstance(value, AgentRuleConfig):
+        raise ValueError(f"{context} must be an AgentRuleConfig")
+    return value
+
+
+def _load_agent_rules(payload: Mapping[str, object]) -> dict[str, AgentRuleConfig]:
+    _validate_rule_agent_ids(payload.keys(), context="agents")
+    rule_configs: dict[str, AgentRuleConfig] = {}
+    for agent_name, agent_payload in payload.items():
+        agent_mapping = _ensure_mapping(agent_payload, context=f"agents.{agent_name}")
+        rule_version = _require_string(agent_mapping, "rule_version")
+        _validate_rule_version(agent_name, rule_version)
+        thresholds = _require_mapping(agent_mapping, "thresholds")
+        _validate_threshold_keys(
+            rule_version, thresholds.keys(), context=f"agents.{agent_name}.thresholds"
+        )
+        rule_configs[agent_name] = AgentRuleConfig(
+            rule_version=rule_version,
+            thresholds=_normalize_float_mapping(
+                thresholds, context=f"agents.{agent_name}.thresholds"
+            ),
+        )
+    return rule_configs
+
+
+def _validate_matching_agent_keys(
+    weights_agent_ids: Iterable[str], agents_agent_ids: Iterable[str]
+) -> None:
+    weights_keys = frozenset(weights_agent_ids)
+    agents_keys = frozenset(agents_agent_ids)
+    if weights_keys != agents_keys:
+        raise ValueError("weights and agents must contain identical keys")
+
+
+def _validate_rule_version(agent_name: str, rule_version: str) -> None:
+    expected_rule_version = EXPECTED_RULE_VERSIONS[agent_name]
+    if rule_version != expected_rule_version:
+        raise ValueError(f"agents.{agent_name}.rule_version must equal {expected_rule_version}")
+
+
+def _validate_threshold_keys(
+    rule_version: str, threshold_keys: Iterable[str], context: str
+) -> None:
+    expected_keys = REQUIRED_AGENT_THRESHOLD_KEYS[rule_version]
+    actual_keys = frozenset(threshold_keys)
+    if actual_keys != expected_keys:
+        missing_keys = sorted(expected_keys - actual_keys)
+        unknown_keys = sorted(actual_keys - expected_keys)
+        details: list[str] = []
+        if missing_keys:
+            details.append(f"missing keys: {', '.join(missing_keys)}")
+        if unknown_keys:
+            details.append(f"unknown keys: {', '.join(unknown_keys)}")
+        raise ValueError(f"{context} must contain exactly the required keys ({'; '.join(details)})")
+
+
+def _validate_rule_agent_ids(agent_ids: Iterable[str], context: str) -> None:
+    unknown_agent_ids = sorted(agent_id for agent_id in agent_ids if agent_id not in RULE_AGENT_IDS)
+    if unknown_agent_ids:
+        raise ValueError(f"unknown agent ids in {context}: {', '.join(unknown_agent_ids)}")
 
 
 def _validate_known_agent_ids(agent_ids: Iterable[str], context: str) -> None:

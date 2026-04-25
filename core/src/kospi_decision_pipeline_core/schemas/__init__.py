@@ -1,4 +1,10 @@
-from .config import AgentWeightConfig, AgentsConfig, ScenarioConfig, ThresholdsConfig
+from .config import (
+    AgentRuleConfig,
+    AgentWeightConfig,
+    AgentsConfig,
+    ScenarioConfig,
+    ThresholdsConfig,
+)
 from .decisions import (
     AgentVote,
     BacktestRow,
@@ -13,6 +19,7 @@ from .serialization import BACKTEST_CSV_FIELDS, from_jsonl_line, to_csv_row, to_
 
 __all__ = [
     "AgentVote",
+    "AgentRuleConfig",
     "AgentWeightConfig",
     "AgentsConfig",
     "BACKTEST_CSV_FIELDS",

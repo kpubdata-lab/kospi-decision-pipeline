@@ -169,6 +169,20 @@ def _required_history_for_realized_vol_percentile() -> int:
     return REALIZED_VOL_WINDOW + TRADING_DAYS_FOR_PERCENTILE
 
 
+def gold_warmup_trading_days() -> int:
+    return _required_history_for_realized_vol_percentile() - 1
+
+
+def gold_lookback_start(*, start: date, calendar: TradingCalendar) -> date:
+    current = start
+    remaining = gold_warmup_trading_days()
+    while remaining > 0:
+        current -= timedelta(days=1)
+        if calendar.is_trading_day(current):
+            remaining -= 1
+    return current
+
+
 @final
 class GoldFeatureBuilder:
     OUTPUT_FILE_NAME = "decision_features.parquet"
@@ -189,11 +203,17 @@ class GoldFeatureBuilder:
         self._calendar = TradingCalendar() if calendar is None else calendar
 
     def build(self, *, silver_root: Path, start: date, end: date) -> Path:
-        trading_days = _trading_days_between(start, end, self._calendar)
-        daily_inputs = [
-            self._load_daily_inputs(silver_root, as_of_date) for as_of_date in trading_days
-        ]
-        gold_rows = self._build_rows(daily_inputs)
+        read_start = gold_lookback_start(start=start, calendar=self._calendar)
+        trading_days = _trading_days_between(read_start, end, self._calendar)
+        daily_inputs: list[DailyInputs | None] = []
+        for as_of_date in trading_days:
+            try:
+                daily_inputs.append(self._load_daily_inputs(silver_root, as_of_date))
+            except MissingGoldInputError:
+                if as_of_date >= start:
+                    raise
+                daily_inputs.append(None)
+        gold_rows = self._build_rows(daily_inputs, requested_start=start)
         output_path = self._output_root / self.OUTPUT_FILE_NAME
         output_path.parent.mkdir(parents=True, exist_ok=True)
         table = _table_from_pylist(cast(list[dict[str, object]], gold_rows))
@@ -262,42 +282,44 @@ class GoldFeatureBuilder:
             raise InvalidGoldInputError("bond_yield", "as_of_date", row_date)
         return row
 
-    def _build_rows(self, daily_inputs: Sequence[DailyInputs]) -> list[GoldRow]:
-        closes = [row.kospi_close for row in daily_inputs]
-        highs = [row.kospi_high for row in daily_inputs]
-        lows = [row.kospi_low for row in daily_inputs]
-        turnover = [row.turnover_krw for row in daily_inputs]
-        base_rates = [row.bok_base_rate for row in daily_inputs]
-        usd_krw_rates = [row.usd_krw_close for row in daily_inputs]
-        bond_yields = [row.kr_bond_yield_3y for row in daily_inputs]
-        foreign_flows = [row.foreign_net_buy_krw for row in daily_inputs]
-        institution_flows = [row.institution_net_buy_krw for row in daily_inputs]
-        individual_flows = [row.individual_net_buy_krw for row in daily_inputs]
-        pers = [row.kospi_per for row in daily_inputs]
-        pbrs = [row.kospi_pbr for row in daily_inputs]
-
-        daily_returns: list[float | None] = [None]
-        for index in range(1, len(daily_inputs)):
-            daily_returns.append((closes[index] / closes[index - 1]) - 1.0)
-
-        realized_vols: list[float | None] = []
-        for index in range(len(daily_inputs)):
-            if index < REALIZED_VOL_WINDOW:
-                realized_vols.append(None)
-                continue
-            trailing_returns = [
-                value
-                for value in daily_returns[(index - (REALIZED_VOL_WINDOW - 1)) : index + 1]
-                if value is not None
-            ]
-            realized_vols.append(pstdev(trailing_returns) * sqrt(252.0))
-
+    def _build_rows(
+        self,
+        daily_inputs: Sequence[DailyInputs | None],
+        *,
+        requested_start: date,
+    ) -> list[GoldRow]:
         rows: list[GoldRow] = []
         minimum_index = _required_history_for_realized_vol_percentile() - 1
         for index in range(len(daily_inputs)):
             if index < minimum_index:
                 continue
-            close_window = closes[(index - 19) : index + 1]
+            segment = daily_inputs[(index - minimum_index) : index + 1]
+            if any(item is None for item in segment):
+                continue
+            valid_segment = cast(list[DailyInputs], segment)
+            closes = [row.kospi_close for row in valid_segment]
+            highs = [row.kospi_high for row in valid_segment]
+            lows = [row.kospi_low for row in valid_segment]
+            turnover = [row.turnover_krw for row in valid_segment]
+            base_rates = [row.bok_base_rate for row in valid_segment]
+            usd_krw_rates = [row.usd_krw_close for row in valid_segment]
+            bond_yields = [row.kr_bond_yield_3y for row in valid_segment]
+            foreign_flows = [row.foreign_net_buy_krw for row in valid_segment]
+            institution_flows = [row.institution_net_buy_krw for row in valid_segment]
+            individual_flows = [row.individual_net_buy_krw for row in valid_segment]
+            pers = [row.kospi_per for row in valid_segment]
+            pbrs = [row.kospi_pbr for row in valid_segment]
+            local_index = len(valid_segment) - 1
+            daily_returns = [
+                (closes[return_index] / closes[return_index - 1]) - 1.0
+                for return_index in range(1, len(valid_segment))
+            ]
+            realized_vols = [
+                pstdev(daily_returns[(realized_index - REALIZED_VOL_WINDOW) : realized_index])
+                * sqrt(252.0)
+                for realized_index in range(REALIZED_VOL_WINDOW, len(valid_segment))
+            ]
+            close_window = closes[(local_index - 19) : local_index + 1]
             close_window_min = min(close_window)
             close_window_max = max(close_window)
             close_position_denominator = close_window_max - close_window_min
@@ -305,56 +327,65 @@ class GoldFeatureBuilder:
                 raise InvalidGoldInputError(
                     "kospi_index", "kospi_close_position_denominator", close_position_denominator
                 )
-            ma5 = sum(closes[(index - 4) : index + 1]) / 5.0
-            realized_vol = realized_vols[index]
-            if realized_vol is None:
-                raise InvalidGoldInputError("kospi_index", "kospi_realized_vol_20d", realized_vol)
+            ma5 = sum(closes[(local_index - 4) : local_index + 1]) / 5.0
+            realized_vol = realized_vols[-1]
             row: GoldRow = {
-                "as_of_date": daily_inputs[index].as_of_date,
-                "kospi_close": closes[index],
-                "kospi_return_1d": (closes[index] / closes[index - 1]) - 1.0,
-                "kospi_return_3d": (closes[index] / closes[index - 3]) - 1.0,
-                "kospi_return_5d": (closes[index] / closes[index - 5]) - 1.0,
+                "as_of_date": valid_segment[-1].as_of_date,
+                "kospi_close": closes[local_index],
+                "kospi_return_1d": (closes[local_index] / closes[local_index - 1]) - 1.0,
+                "kospi_return_3d": (closes[local_index] / closes[local_index - 3]) - 1.0,
+                "kospi_return_5d": (closes[local_index] / closes[local_index - 5]) - 1.0,
                 "kospi_ma5": ma5,
                 "kospi_ma20": sum(close_window) / 20.0,
-                "kospi_ma5_gap": (closes[index] - ma5) / ma5,
-                "kospi_close_position": (closes[index] - close_window_min)
+                "kospi_ma5_gap": (closes[local_index] - ma5) / ma5,
+                "kospi_close_position": (closes[local_index] - close_window_min)
                 / close_position_denominator,
-                "bok_base_rate": base_rates[index],
-                "bok_base_rate_change_30d": base_rates[index] - base_rates[index - 30],
-                "usd_krw_close": usd_krw_rates[index],
-                "usd_krw_return_5d": (usd_krw_rates[index] / usd_krw_rates[index - 5]) - 1.0,
-                "kr_bond_yield_3y": bond_yields[index],
-                "kr_bond_yield_change_30d": bond_yields[index] - bond_yields[index - 30],
-                "foreign_net_buy_krw_5d_sum": sum(foreign_flows[(index - 4) : index + 1]),
-                "institution_net_buy_krw_5d_sum": sum(institution_flows[(index - 4) : index + 1]),
-                "individual_net_buy_krw_5d_sum": sum(individual_flows[(index - 4) : index + 1]),
-                "foreign_net_buy_5d_pct_of_turnover": sum(foreign_flows[(index - 4) : index + 1])
-                / sum(turnover[(index - 4) : index + 1]),
-                "institution_net_buy_5d_pct_of_turnover": sum(
-                    institution_flows[(index - 4) : index + 1]
-                )
-                / sum(turnover[(index - 4) : index + 1]),
-                "kospi_per": pers[index],
-                "kospi_pbr": pbrs[index],
-                "kospi_per_percentile_252d": _rolling_percentile(
-                    pers, index, window=TRADING_DAYS_FOR_PERCENTILE
+                "bok_base_rate": base_rates[local_index],
+                "bok_base_rate_change_30d": base_rates[local_index] - base_rates[local_index - 30],
+                "usd_krw_close": usd_krw_rates[local_index],
+                "usd_krw_return_5d": (usd_krw_rates[local_index] / usd_krw_rates[local_index - 5])
+                - 1.0,
+                "kr_bond_yield_3y": bond_yields[local_index],
+                "kr_bond_yield_change_30d": bond_yields[local_index]
+                - bond_yields[local_index - 30],
+                "foreign_net_buy_krw_5d_sum": sum(
+                    foreign_flows[(local_index - 4) : local_index + 1]
                 ),
-                "kospi_pbr_percentile_252d": _rolling_percentile(
-                    pbrs, index, window=TRADING_DAYS_FOR_PERCENTILE
+                "institution_net_buy_krw_5d_sum": sum(
+                    institution_flows[(local_index - 4) : local_index + 1]
+                ),
+                "individual_net_buy_krw_5d_sum": sum(
+                    individual_flows[(local_index - 4) : local_index + 1]
+                ),
+                "foreign_net_buy_5d_pct_of_turnover": sum(
+                    foreign_flows[(local_index - 4) : local_index + 1]
+                )
+                / sum(turnover[(local_index - 4) : local_index + 1]),
+                "institution_net_buy_5d_pct_of_turnover": sum(
+                    institution_flows[(local_index - 4) : local_index + 1]
+                )
+                / sum(turnover[(local_index - 4) : local_index + 1]),
+                "kospi_per": pers[local_index],
+                "kospi_pbr": pbrs[local_index],
+                "kospi_per_percentile_252d": _percentile_rank(
+                    pers[-TRADING_DAYS_FOR_PERCENTILE:], pers[-1]
+                ),
+                "kospi_pbr_percentile_252d": _percentile_rank(
+                    pbrs[-TRADING_DAYS_FOR_PERCENTILE:], pbrs[-1]
                 ),
                 "kospi_realized_vol_20d": realized_vol,
-                "kospi_realized_vol_20d_percentile_252d": _rolling_percentile_ignore_none(
-                    realized_vols, index, window=TRADING_DAYS_FOR_PERCENTILE
+                "kospi_realized_vol_20d_percentile_252d": _percentile_rank(
+                    realized_vols[-TRADING_DAYS_FOR_PERCENTILE:], realized_vol
                 ),
                 "kospi_atr_14d": sum(
                     highs[inner_index] - lows[inner_index]
-                    for inner_index in range(index - 13, index + 1)
+                    for inner_index in range(local_index - 13, local_index + 1)
                 )
                 / 14.0,
             }
             assert_no_forbidden_gold_columns(row.keys())
-            rows.append(row)
+            if valid_segment[-1].as_of_date >= requested_start:
+                rows.append(row)
         return rows
 
 
@@ -366,5 +397,7 @@ __all__ = [
     "SilverDatasetRequirement",
     "TRADING_DAYS_FOR_PERCENTILE",
     "assert_no_forbidden_gold_columns",
+    "gold_lookback_start",
     "gold_sha256",
+    "gold_warmup_trading_days",
 ]

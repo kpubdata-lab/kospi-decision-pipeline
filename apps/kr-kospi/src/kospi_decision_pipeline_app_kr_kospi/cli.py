@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry, LiveConnectorRegistry
-from .transforms.gold_features import GoldFeatureBuilder, gold_sha256
+from .transforms.gold_features import GoldFeatureBuilder, gold_lookback_start, gold_sha256
 from .transforms.silver import DATASET_DEFINITIONS, SilverNormalizer, silver_sha256
 
 
@@ -89,12 +89,13 @@ def run_build_features_command(
     if layer == "all":
         silver_root = Path(silver_dir)
         normalizer = SilverNormalizer(output_root=silver_root)
+        silver_start = gold_lookback_start(start=start_date, calendar=normalizer._calendar)
         for requirement in GoldFeatureBuilder.REQUIRED_SILVER_DATASETS:
             written_paths = normalizer.normalize_dataset(
                 bronze_root=Path(bronze_dir),
                 source_name=requirement.source_name,
                 dataset_id=requirement.dataset_id,
-                start=start_date,
+                start=silver_start,
                 end=end_date,
             )
             for path in written_paths:

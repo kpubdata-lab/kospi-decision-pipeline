@@ -17,7 +17,9 @@ from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import (
     InvalidGoldInputError,
     MissingGoldInputError,
     assert_no_forbidden_gold_columns,
+    gold_lookback_start,
     gold_sha256,
+    gold_warmup_trading_days,
 )
 
 
@@ -201,11 +203,12 @@ def test_gold_feature_builder_computes_trailing_only_features(tmp_path: Path) ->
     days = _trading_days(272)
     silver_root = tmp_path / "silver"
     _build_complete_silver_history(silver_root, days)
+    target_day = days[-1]
 
     output_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
         silver_root=silver_root,
-        start=days[0],
-        end=days[-1],
+        start=target_day,
+        end=target_day,
     )
 
     rows = _read_rows(output_path)
@@ -233,7 +236,7 @@ def test_gold_feature_builder_computes_trailing_only_features(tmp_path: Path) ->
         realized_vols.append(pstdev(returns_window) * sqrt(252))
     realized_vol_percentile = _percentile_rank(realized_vols[-252:], realized_vols[-1])
 
-    assert row["as_of_date"] == days[-1]
+    assert row["as_of_date"] == target_day
     assert set(row) == EXPECTED_GOLD_COLUMNS
     assert row["kospi_close"] == pytest.approx(close)
     assert row["kospi_return_1d"] == pytest.approx((close / close_prices[-2]) - 1)
@@ -297,12 +300,12 @@ def test_gold_feature_builder_preserves_as_of_date_semantics(tmp_path: Path) -> 
 
     first_output = GoldFeatureBuilder(output_root=tmp_path / "gold-one").build(
         silver_root=first_silver_root,
-        start=days[0],
+        start=days[-2],
         end=days[-1],
     )
     second_output = GoldFeatureBuilder(output_root=tmp_path / "gold-two").build(
         silver_root=second_silver_root,
-        start=days[0],
+        start=days[-2],
         end=days[-1],
     )
 
@@ -315,21 +318,47 @@ def test_gold_feature_builder_preserves_as_of_date_semantics(tmp_path: Path) -> 
 
 
 def test_gold_feature_builder_skips_rows_without_full_252d_history(tmp_path: Path) -> None:
-    days = _trading_days(251)
+    days = _trading_days(251, start=date(2025, 1, 2))
     silver_root = tmp_path / "silver"
     _build_complete_silver_history(silver_root, days)
 
     output_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
         silver_root=silver_root,
-        start=days[0],
+        start=days[-1],
         end=days[-1],
     )
 
     assert _read_rows(output_path) == []
 
 
+def test_gold_feature_builder_uses_pre_start_silver_history(tmp_path: Path) -> None:
+    days = _trading_days(272)
+    silver_root = tmp_path / "silver"
+    _build_complete_silver_history(silver_root, days)
+
+    output_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
+        silver_root=silver_root,
+        start=days[-1],
+        end=days[-1],
+    )
+
+    rows = _read_rows(output_path)
+    assert len(rows) == 1
+    assert rows[0]["as_of_date"] == days[-1]
+
+
+def test_gold_lookback_start_steps_back_required_trading_days() -> None:
+    calendar = TradingCalendar()
+    start = date(2025, 2, 13)
+    lookback_start = gold_lookback_start(start=start, calendar=calendar)
+
+    days = _trading_days(272)
+    assert lookback_start == days[0]
+    assert gold_warmup_trading_days() == 271
+
+
 def test_gold_feature_builder_raises_typed_error_for_missing_required_input(tmp_path: Path) -> None:
-    days = _trading_days(252)
+    days = _trading_days(252, start=date(2025, 1, 2))
     silver_root = tmp_path / "silver"
     _build_complete_silver_history(silver_root, days)
     missing_date = days[-1]
@@ -338,7 +367,7 @@ def test_gold_feature_builder_raises_typed_error_for_missing_required_input(tmp_
     with pytest.raises(MissingGoldInputError, match="bond_yield"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -350,12 +379,12 @@ def test_gold_feature_builder_is_deterministic_for_identical_silver_input(tmp_pa
 
     first_path = GoldFeatureBuilder(output_root=tmp_path / "gold-one").build(
         silver_root=silver_root,
-        start=days[0],
+        start=days[-1],
         end=days[-1],
     )
     second_path = GoldFeatureBuilder(output_root=tmp_path / "gold-two").build(
         silver_root=silver_root,
-        start=days[0],
+        start=days[-1],
         end=days[-1],
     )
 
@@ -393,7 +422,7 @@ def test_gold_feature_builder_requires_single_3y_bond_yield_row(tmp_path: Path) 
     with pytest.raises(InvalidGoldInputError, match="maturity_code"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -434,7 +463,7 @@ def test_gold_feature_builder_raises_for_wrong_row_count(tmp_path: Path) -> None
     with pytest.raises(InvalidGoldInputError, match="row_count"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -460,7 +489,7 @@ def test_gold_feature_builder_raises_for_wrong_as_of_date(tmp_path: Path) -> Non
     with pytest.raises(InvalidGoldInputError, match="as_of_date"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -486,7 +515,7 @@ def test_gold_feature_builder_raises_for_invalid_float_input(tmp_path: Path) -> 
     with pytest.raises(InvalidGoldInputError, match="usd_krw_rate"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -514,7 +543,7 @@ def test_gold_feature_builder_raises_for_invalid_date_input(tmp_path: Path) -> N
     with pytest.raises(InvalidGoldInputError, match="as_of_date"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -541,7 +570,7 @@ def test_gold_feature_builder_raises_for_invalid_text_input(tmp_path: Path) -> N
     with pytest.raises(InvalidGoldInputError, match="maturity_code"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )
 
@@ -572,6 +601,6 @@ def test_gold_feature_builder_raises_for_zero_close_position_denominator(tmp_pat
     with pytest.raises(InvalidGoldInputError, match="kospi_close_position_denominator"):
         _ = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
             silver_root=silver_root,
-            start=days[0],
+            start=days[-1],
             end=days[-1],
         )

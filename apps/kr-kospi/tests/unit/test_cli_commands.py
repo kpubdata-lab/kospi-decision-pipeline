@@ -482,7 +482,7 @@ def test_run_build_features_command_writes_gold_output(
 ) -> None:
     from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import GoldFeatureBuilder
 
-    days = _trading_days(252)
+    days = _trading_days(272)
     _build_complete_silver_history(tmp_path / "silver", days)
 
     assert (
@@ -490,7 +490,7 @@ def test_run_build_features_command_writes_gold_output(
             layer="gold",
             source="",
             dataset="",
-            start=days[0].isoformat(),
+            start=days[-1].isoformat(),
             end=days[-1].isoformat(),
             bronze_dir=str(tmp_path / "bronze"),
             silver_dir=str(tmp_path / "silver"),
@@ -555,8 +555,8 @@ def test_run_build_features_command_writes_all_layers_output(
 
     def fake_build(self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
         assert silver_root == tmp_path / "silver"
-        assert start.isoformat() == "2024-01-02"
-        assert end.isoformat() == "2024-01-03"
+        assert start.isoformat() == "2025-02-13"
+        assert end.isoformat() == "2025-02-14"
         return written_gold_path
 
     monkeypatch = pytest.MonkeyPatch()
@@ -569,8 +569,8 @@ def test_run_build_features_command_writes_all_layers_output(
                 layer="all",
                 source="",
                 dataset="",
-                start="2024-01-02",
-                end="2024-01-03",
+                start="2025-02-13",
+                end="2025-02-14",
                 bronze_dir=str(tmp_path / "bronze"),
                 silver_dir=str(tmp_path / "silver"),
                 output_dir=str(tmp_path / "gold"),
@@ -583,3 +583,56 @@ def test_run_build_features_command_writes_all_layers_output(
     assert written_silver_path.is_file()
     assert written_gold_path.is_file()
     assert "wrote decision_features.parquet sha256=" in capsys.readouterr().out
+
+
+def test_run_build_features_command_uses_warmup_start_for_all_layer(tmp_path: Path) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import (
+        GoldFeatureBuilder,
+        gold_lookback_start,
+    )
+    from kospi_decision_pipeline_app_kr_kospi.transforms.silver import SilverNormalizer
+
+    captured_starts: list[date] = []
+    written_gold_path = tmp_path / "gold" / GoldFeatureBuilder.OUTPUT_FILE_NAME
+    written_gold_path.parent.mkdir(parents=True, exist_ok=True)
+    WRITE_TABLE(
+        _table_from_pylist([{"as_of_date": date(2025, 2, 13), "kospi_close": 1.0}]),
+        written_gold_path,
+        compression="snappy",
+    )
+
+    def fake_normalize_dataset(self: SilverNormalizer, **kwargs: object) -> tuple[Path, ...]:
+        start = kwargs.get("start")
+        assert isinstance(start, date)
+        captured_starts.append(start)
+        return ()
+
+    def fake_build(self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
+        assert silver_root == tmp_path / "silver"
+        assert start == date(2025, 2, 13)
+        assert end == date(2025, 2, 13)
+        return written_gold_path
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SilverNormalizer, "normalize_dataset", fake_normalize_dataset)
+    monkeypatch.setattr(GoldFeatureBuilder, "build", fake_build)
+
+    try:
+        assert (
+            run_build_features_command(
+                layer="all",
+                source="",
+                dataset="",
+                start="2025-02-13",
+                end="2025-02-13",
+                bronze_dir=str(tmp_path / "bronze"),
+                silver_dir=str(tmp_path / "silver"),
+                output_dir=str(tmp_path / "gold"),
+            )
+            == 0
+        )
+    finally:
+        monkeypatch.undo()
+
+    expected_start = gold_lookback_start(start=date(2025, 2, 13), calendar=TradingCalendar())
+    assert captured_starts == [expected_start] * len(GoldFeatureBuilder.REQUIRED_SILVER_DATASETS)

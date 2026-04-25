@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from math import isnan
-from pathlib import Path
 
-CORE_SRC = Path(__file__).resolve().parents[2] / "src"
-sys.path.insert(0, str(CORE_SRC))
-
-from kospi_decision_pipeline_core.features.leakage_guard import LeakageError
-from kospi_decision_pipeline_core.schemas import AgentRuleConfig
-
-from kospi_decision_pipeline_core.agents.volatility import AgentFeatureRow, VolatilityAgent
+from core.src.kospi_decision_pipeline_core.agents.volatility import AgentFeatureRow, VolatilityAgent
+from core.src.kospi_decision_pipeline_core.features.leakage_guard import LeakageError
+from core.src.kospi_decision_pipeline_core.schemas import AgentRuleConfig
 
 
 @contextmanager
@@ -51,10 +45,10 @@ def make_row(
     rv20d: float,
     rv_pct: float,
     atr14: float,
-    as_of: date = date(2026, 4, 25),
+    as_of: date | None = None,
 ) -> AgentFeatureRow:
     return AgentFeatureRow(
-        as_of=as_of,
+        as_of=date(2026, 4, 25) if as_of is None else as_of,
         values={
             "kospi_realized_vol_20d": rv20d,
             "kospi_realized_vol_20d_percentile_252d": rv_pct,
@@ -121,6 +115,19 @@ def test_volatility_agent_treats_nan_rv20d_and_atr_as_not_matched() -> None:
         assert vote.label == "skip"
         assert vote.score == 0.0
         assert isnan(vote.evidence[evidence_index].value)
+
+
+def test_volatility_agent_treats_non_finite_stress_inputs_as_not_matched() -> None:
+    for rv20d, rv_pct, atr14 in (
+        (float("nan"), 0.88, 45.0),
+        (0.25, 0.88, float("nan")),
+        (float("inf"), 0.88, 45.0),
+        (0.25, 0.88, float("inf")),
+    ):
+        vote = make_agent().vote(make_row(rv20d=rv20d, rv_pct=rv_pct, atr14=atr14))
+
+        assert vote.label == "skip"
+        assert vote.score == 0.0
 
 
 def test_volatility_agent_treats_non_finite_inputs_as_not_matched() -> None:

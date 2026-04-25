@@ -97,9 +97,13 @@ class VolatilityAgent:
         ):
             return ("up", 0.40)
 
-        if self._gte(rv_pct, thresholds["realized_vol_pct_down_min"]) and (
-            self._gte(rv20d, thresholds["realized_vol_20d_down_min"])
-            or self._gte(atr14, thresholds["atr_14d_down_min"])
+        if (
+            self._all_finite((rv20d, rv_pct, atr14))
+            and self._gte(rv_pct, thresholds["realized_vol_pct_down_min"])
+            and (
+                self._gte(rv20d, thresholds["realized_vol_20d_down_min"])
+                or self._gte(atr14, thresholds["atr_14d_down_min"])
+            )
         ):
             return ("down", -0.65)
 
@@ -121,3 +125,6 @@ class VolatilityAgent:
 
     def _lt(self, value: float, threshold: float) -> bool:
         return isfinite(value) and value < threshold
+
+    def _all_finite(self, values: tuple[float, ...]) -> bool:
+        return all(isfinite(value) for value in values)

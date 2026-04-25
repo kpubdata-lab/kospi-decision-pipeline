@@ -259,6 +259,23 @@ def test_load_agents_config_rejects_unknown_agent_ids(tmp_path: Path) -> None:
         _ = load_agents_config(config_path)
 
 
+def test_load_agents_config_rejects_decision_agent_in_weights_and_agents(tmp_path: Path) -> None:
+    payload = valid_agents_payload()
+    weights = cast(dict[str, float], payload["weights"])
+    agents = cast(dict[str, object], payload["agents"])
+    _ = weights.pop("volatility")
+    weights["decision"] = 0.15
+    _ = agents.pop("volatility")
+    agents["decision"] = {
+        "rule_version": "decision@1.0.0",
+        "thresholds": {"aggregate_min_score": 0.25},
+    }
+    config_path = write_yaml(tmp_path / "agents.yaml", payload)
+
+    with pytest.raises(ValueError, match="unknown agent ids in weights: decision"):
+        _ = load_agents_config(config_path)
+
+
 def test_load_scenario_config_rejects_invalid_horizon(tmp_path: Path) -> None:
     config_path = write_yaml(
         tmp_path / "scenario.yaml",
@@ -347,7 +364,7 @@ def test_load_agents_config_rejects_mismatched_agent_names_between_weights_and_a
     payload = valid_agents_payload()
     weights = cast(dict[str, float], payload["weights"])
     _ = weights.pop("volatility")
-    weights["decision"] = 0.15
+    weights["technical"] = 0.45
     config_path = write_yaml(tmp_path / "agents.yaml", payload)
 
     with pytest.raises(ValueError, match="weights and agents must contain identical keys"):
@@ -372,6 +389,28 @@ def test_load_agents_config_rejects_non_numeric_agent_threshold_value(tmp_path: 
     config_path = write_yaml(tmp_path / "agents.yaml", payload)
 
     with pytest.raises(ValueError, match="agents.technical.thresholds.ma5_gap_up_min"):
+        _ = load_agents_config(config_path)
+
+
+def test_load_agents_config_rejects_missing_required_agent_threshold_key(tmp_path: Path) -> None:
+    payload = valid_agents_payload()
+    agents = cast(dict[str, dict[str, object]], payload["agents"])
+    thresholds = cast(dict[str, object], agents["technical"]["thresholds"])
+    del thresholds["return_5d_down_max"]
+    config_path = write_yaml(tmp_path / "agents.yaml", payload)
+
+    with pytest.raises(ValueError, match="missing keys: return_5d_down_max"):
+        _ = load_agents_config(config_path)
+
+
+def test_load_agents_config_rejects_unknown_agent_threshold_key(tmp_path: Path) -> None:
+    payload = valid_agents_payload()
+    agents = cast(dict[str, dict[str, object]], payload["agents"])
+    thresholds = cast(dict[str, object], agents["technical"]["thresholds"])
+    thresholds["surprise_threshold"] = 0.123
+    config_path = write_yaml(tmp_path / "agents.yaml", payload)
+
+    with pytest.raises(ValueError, match="unknown keys: surprise_threshold"):
         _ = load_agents_config(config_path)
 
 

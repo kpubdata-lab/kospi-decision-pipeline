@@ -19,6 +19,15 @@ AgentId = Literal[
     "volatility",
     "decision",
 ]
+RULE_AGENT_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "technical",
+        "domestic_macro",
+        "flow",
+        "valuation",
+        "volatility",
+    }
+)
 KNOWN_AGENT_IDS: Final[frozenset[str]] = frozenset(
     {
         "technical",
@@ -27,6 +36,63 @@ KNOWN_AGENT_IDS: Final[frozenset[str]] = frozenset(
         "valuation",
         "volatility",
         "decision",
+    }
+)
+REQUIRED_AGENT_THRESHOLD_KEYS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "technical@1.0.0": frozenset(
+            {
+                "ma5_gap_up_min",
+                "close_position_up_min",
+                "return_5d_up_min",
+                "ma5_gap_down_max",
+                "close_position_down_max",
+                "return_5d_down_max",
+            }
+        ),
+        "domestic_macro@1.0.0": frozenset(
+            {
+                "bok_rate_change_up_max",
+                "usdkrw_return_5d_up_max",
+                "bond_yield_change_30d_up_max",
+                "bok_rate_change_down_min",
+                "usdkrw_return_5d_down_min",
+                "bond_yield_change_30d_down_min",
+                "usdkrw_return_5d_mixed_pos_min",
+                "usdkrw_return_5d_mixed_neg_max",
+                "bond_yield_change_30d_mixed_pos_min",
+                "bond_yield_change_30d_mixed_neg_max",
+            }
+        ),
+        "flow@1.0.0": frozenset(
+            {
+                "foreign_pct_up_min",
+                "foreign_pct_down_max",
+                "foreign_pct_neutral_abs_max",
+            }
+        ),
+        "valuation@1.0.0": frozenset(
+            {
+                "per_percentile_up_max",
+                "pbr_percentile_up_max",
+                "per_percentile_down_min",
+                "pbr_percentile_down_min",
+                "fair_value_center",
+                "fair_value_half_band",
+            }
+        ),
+        "volatility@1.0.0": frozenset(
+            {
+                "realized_vol_20d_up_max",
+                "realized_vol_pct_up_max",
+                "atr_14d_up_max",
+                "realized_vol_pct_down_min",
+                "realized_vol_20d_down_min",
+                "atr_14d_down_min",
+                "realized_vol_pct_mid_low",
+                "realized_vol_pct_mid_high",
+            }
+        ),
     }
 )
 WEIGHT_TOLERANCE: Final[float] = 1e-9
@@ -64,7 +130,7 @@ class AgentWeightConfig:
 
     def __post_init__(self) -> None:
         weights = _normalize_float_mapping(self.values, context="weights")
-        _validate_known_agent_ids(weights.keys(), context="weights")
+        _validate_rule_agent_ids(weights.keys(), context="weights")
         total = sum(weights.values())
         if not isclose(total, 1.0, rel_tol=0.0, abs_tol=WEIGHT_TOLERANCE):
             raise ValueError("weights must sum to 1.0 ± 1e-9")
@@ -283,13 +349,16 @@ def _ensure_agent_rule_config(value: object, context: str) -> AgentRuleConfig:
 
 
 def _load_agent_rules(payload: Mapping[str, object]) -> dict[str, AgentRuleConfig]:
-    _validate_known_agent_ids(payload.keys(), context="agents")
+    _validate_rule_agent_ids(payload.keys(), context="agents")
     rule_configs: dict[str, AgentRuleConfig] = {}
     for agent_name, agent_payload in payload.items():
         agent_mapping = _ensure_mapping(agent_payload, context=f"agents.{agent_name}")
         rule_version = _require_string(agent_mapping, "rule_version")
         _validate_rule_version(agent_name, rule_version)
         thresholds = _require_mapping(agent_mapping, "thresholds")
+        _validate_threshold_keys(
+            rule_version, thresholds.keys(), context=f"agents.{agent_name}.thresholds"
+        )
         rule_configs[agent_name] = AgentRuleConfig(
             rule_version=rule_version,
             thresholds=_normalize_float_mapping(
@@ -311,6 +380,28 @@ def _validate_matching_agent_keys(
 def _validate_rule_version(agent_name: str, rule_version: str) -> None:
     if not re.fullmatch(rf"{re.escape(agent_name)}@\d+\.\d+\.\d+", rule_version):
         raise ValueError(f"agents.{agent_name}.rule_version must match {agent_name}@<semver>")
+
+
+def _validate_threshold_keys(
+    rule_version: str, threshold_keys: Iterable[str], context: str
+) -> None:
+    expected_keys = REQUIRED_AGENT_THRESHOLD_KEYS[rule_version]
+    actual_keys = frozenset(threshold_keys)
+    if actual_keys != expected_keys:
+        missing_keys = sorted(expected_keys - actual_keys)
+        unknown_keys = sorted(actual_keys - expected_keys)
+        details: list[str] = []
+        if missing_keys:
+            details.append(f"missing keys: {', '.join(missing_keys)}")
+        if unknown_keys:
+            details.append(f"unknown keys: {', '.join(unknown_keys)}")
+        raise ValueError(f"{context} must contain exactly the required keys ({'; '.join(details)})")
+
+
+def _validate_rule_agent_ids(agent_ids: Iterable[str], context: str) -> None:
+    unknown_agent_ids = sorted(agent_id for agent_id in agent_ids if agent_id not in RULE_AGENT_IDS)
+    if unknown_agent_ids:
+        raise ValueError(f"unknown agent ids in {context}: {', '.join(unknown_agent_ids)}")
 
 
 def _validate_known_agent_ids(agent_ids: Iterable[str], context: str) -> None:

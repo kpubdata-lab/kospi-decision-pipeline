@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
+from decimal import Decimal
+from typing import cast
 
-from kospi_decision_pipeline_core.features import (
+import kospi_decision_pipeline_core.features as features_package
+import kospi_decision_pipeline_core.features.leakage_guard as leakage_guard_module
+from kospi_decision_pipeline_core.features.agent_input import build_agent_feature_row
+from kospi_decision_pipeline_core.features.leakage_guard import (
     LeakageError,
     assert_no_forbidden_columns,
     assert_not_full_period_normalized,
     assert_trailing_window,
-    build_agent_feature_row,
 )
 
 
@@ -30,14 +34,31 @@ def _join_walk_forward_row(
     joined_as_of: date,
     row: Mapping[str, float | int | str],
 ) -> dict[str, float | int | str]:
-    if joined_as_of > decision_date:
-        raise LeakageError(
-            "future-join walk-forward rows must satisfy joined_as_of <= decision_date"
-        )
+    join_guard = cast(
+        Callable[..., None],
+        getattr(leakage_guard_module, "assert_join_not_from_future"),
+    )
+    join_guard(
+        joined_as_of=joined_as_of,
+        decision_date=decision_date,
+    )
     return dict(row)
 
 
+def _build_untyped_agent_feature_row(
+    gold_row: Mapping[str, object],
+    allowed_columns: tuple[str, ...],
+) -> dict[str, object]:
+    factory = cast(
+        Callable[[Mapping[str, object], tuple[str, ...]], dict[str, object]],
+        build_agent_feature_row,
+    )
+    return factory(gold_row, allowed_columns)
+
+
 def test_target_injection_poison_fixture_raises_at_agent_input_boundary() -> None:
+    assert "build_agent_feature_row" in features_package.__all__
+
     with _assert_raises(LeakageError, "forbidden columns"):
         _ = build_agent_feature_row(
             {
@@ -84,6 +105,16 @@ def test_future_join_walk_forward_poison_fixture_raises() -> None:
             joined_as_of=date(2024, 1, 8),
             row={"kospi_close": 100.0},
         )
+
+
+def test_future_join_walk_forward_accepts_safe_join_dates() -> None:
+    row = _join_walk_forward_row(
+        decision_date=date(2024, 1, 5),
+        joined_as_of=date(2024, 1, 5),
+        row={"kospi_close": 100.0},
+    )
+
+    assert row == {"kospi_close": 100.0}
 
 
 def test_assert_no_forbidden_columns_accepts_safe_columns_and_custom_prefixes() -> None:
@@ -163,3 +194,16 @@ def test_build_agent_feature_row_rejects_forbidden_allowed_columns() -> None:
             {"as_of_date": "2024-01-05", "kospi_close": 100.0},
             allowed_columns=("as_of_date", "future_hint"),
         )
+
+
+def test_build_agent_feature_row_rejects_unsupported_scalar_values() -> None:
+    for column, value in (
+        ("is_holiday", True),
+        ("published_at", date(2024, 1, 5)),
+        ("turnover_krw", Decimal("10.5")),
+    ):
+        with _assert_raises(LeakageError, f"unsupported feature value for '{column}'"):
+            _ = _build_untyped_agent_feature_row(
+                {"as_of_date": "2024-01-05", column: value},
+                allowed_columns=("as_of_date", column),
+            )

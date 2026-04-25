@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
 
 
 class LeakageError(ValueError):
@@ -58,8 +59,16 @@ def assert_not_full_period_normalized(
         )
 
 
+def assert_join_not_from_future(*, joined_as_of: date, decision_date: date) -> None:
+    if joined_as_of > decision_date:
+        raise LeakageError(
+            "future-join walk-forward rows must satisfy joined_as_of <= decision_date"
+        )
+
+
 __all__ = [
     "LeakageError",
+    "assert_join_not_from_future",
     "assert_no_forbidden_columns",
     "assert_not_full_period_normalized",
     "assert_trailing_window",

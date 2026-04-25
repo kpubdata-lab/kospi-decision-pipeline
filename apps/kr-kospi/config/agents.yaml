@@ -1,0 +1,9 @@
+weights:
+  technical: 0.30
+  domestic_macro: 0.20
+  flow: 0.25
+  valuation: 0.10
+  volatility: 0.15
+thresholds:
+  up: 0.25
+  down: -0.25

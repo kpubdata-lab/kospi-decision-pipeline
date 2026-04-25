@@ -1,0 +1,9 @@
+scenario_id: kospi.next_day
+horizon: next_day
+agents:
+  - technical
+  - domestic_macro
+  - flow
+  - valuation
+  - volatility
+  - decision

@@ -69,6 +69,25 @@ KRX_HOLIDAYS = {
             date(2026, 12, 31),
         }
     ),
+    2027: frozenset(
+        {
+            date(2027, 1, 1),
+            date(2027, 2, 8),
+            date(2027, 2, 9),
+            date(2027, 2, 10),
+            date(2027, 3, 1),
+            date(2027, 5, 5),
+            date(2027, 5, 12),
+            date(2027, 6, 6),
+            date(2027, 8, 16),
+            date(2027, 9, 15),
+            date(2027, 9, 16),
+            date(2027, 9, 17),
+            date(2027, 10, 4),
+            date(2027, 10, 11),
+            date(2027, 12, 31),
+        }
+    ),
 }
 
 
@@ -77,5 +96,5 @@ class TradingCalendar:
     def is_trading_day(self, value: date) -> bool:
         holidays = KRX_HOLIDAYS.get(value.year)
         if holidays is None:
-            return value.weekday() < 5
+            raise ValueError(f"unsupported KRX calendar year: {value.year}")
         return value.weekday() < 5 and value not in holidays

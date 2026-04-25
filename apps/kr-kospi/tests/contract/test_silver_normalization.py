@@ -353,7 +353,8 @@ def test_silver_normalizer_is_deterministic_for_identical_bronze_input(tmp_path:
 
 
 def test_trading_calendar_rejects_unsupported_year() -> None:
-    assert TradingCalendar().is_trading_day(date(2027, 1, 4)) is True
+    with pytest.raises(ValueError, match="2028"):
+        _ = TradingCalendar().is_trading_day(date(2028, 1, 4))
 
 
 def test_trading_calendar_rejects_weekend() -> None:
@@ -366,6 +367,10 @@ def test_trading_calendar_rejects_known_holiday() -> None:
 
 def test_trading_calendar_accepts_trading_day() -> None:
     assert TradingCalendar().is_trading_day(date(2024, 1, 2)) is True
+
+
+def test_trading_calendar_rejects_2027_new_year_holiday() -> None:
+    assert TradingCalendar().is_trading_day(date(2027, 1, 1)) is False
 
 
 def test_silver_normalizer_rejects_unsupported_dataset(tmp_path: Path) -> None:

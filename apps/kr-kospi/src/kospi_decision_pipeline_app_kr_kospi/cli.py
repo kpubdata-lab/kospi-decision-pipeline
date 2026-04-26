@@ -240,7 +240,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="kospi-pipeline")
     _ = parser.add_argument("--version", action="version", version="0.0.1")
     sub = parser.add_subparsers(dest="cmd", required=False)
-    ingest_parser = sub.add_parser("ingest", help="ingest Bronze data")
+    ingest_parser = sub.add_parser(
+        "ingest",
+        help="ingest Bronze data (KOSIS live support is bronze-only in v0.2)",
+        description="Ingest Bronze data. KOSIS live support is bronze-only in v0.2.",
+    )
     _ = ingest_parser.add_argument(
         "--source", choices=("krx", "ecos", "kosis", "data_portal"), required=True
     )

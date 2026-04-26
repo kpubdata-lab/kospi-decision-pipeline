@@ -6,6 +6,7 @@ from typing import final
 
 from ._secrets import resolve_live_api_key
 from .ecos import LiveEcosConnector
+from .kosis import LiveKosisConnector
 from .krx import PykrxKrxConnector
 
 
@@ -29,8 +30,13 @@ class LiveConnectorRegistry:
                 environment=self._environment,
             )
         if source == "kosis":
-            raise NotImplementedError(
-                "KOSIS live connector is not implemented yet in v0.2 — see #49"
+            return LiveKosisConnector(
+                api_key=resolve_live_api_key(
+                    source=source,
+                    api_key=api_key,
+                    environment=self._environment,
+                ),
+                environment=self._environment,
             )
         raise ValueError(f"unsupported source: {source}")
 

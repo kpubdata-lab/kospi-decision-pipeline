@@ -8,8 +8,12 @@ import os
 import httpx
 import pytest
 
+from kospi_decision_pipeline_app_kr_kospi.connectors._http import HttpRequestError
 from kospi_decision_pipeline_app_kr_kospi.connectors.kosis import (
     LiveKosisConnector,
+    _default_sleep,
+    _format_period,
+    _utc_now,
     parse_macro_indicator_rows,
 )
 
@@ -115,6 +119,19 @@ def test_live_kosis_connector_rejects_unsupported_live_dataset_shape() -> None:
         connector.fetch_per_pbr_percentiles(START_DATE, END_DATE)
 
 
+def test_live_kosis_connector_reraises_non_auth_http_failures() -> None:
+    connector = LiveKosisConnector(
+        api_key="test-kosis-key",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(status_code=500, request=request)
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    with pytest.raises(HttpRequestError, match="HTTP request failed after 3 attempts"):
+        connector.fetch_macro_indicators(START_DATE, END_DATE)
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
@@ -138,6 +155,36 @@ def test_parse_macro_indicator_rows_validates_payload_shape(payload: object, mes
             series_name="verified-series",
             unit="index",
         )
+
+
+def test_parse_macro_indicator_rows_uses_fallback_series_name_and_unit() -> None:
+    rows = parse_macro_indicator_rows(
+        payload=[{"PRD_DE": "202401", "DT": "99.9"}],
+        dataset_name="macro_indicators",
+        fetched_at_utc=FETCHED_AT.isoformat(),
+        key_fingerprint_sha256="fingerprint123456",
+        series_name="verified-series",
+        unit="index",
+    )
+
+    assert rows[0].indicator_name == "verified-series"
+    assert rows[0].unit == "index"
+
+
+def test_kosis_period_helpers_cover_supported_and_unsupported_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _format_period(date(2024, 2, 29), "M") == "202402"
+
+    with pytest.raises(ValueError, match="unsupported KOSIS period type"):
+        _format_period(date(2024, 2, 29), "D")
+
+    slept: list[float] = []
+    monkeypatch.setattr("time.sleep", slept.append)
+    _default_sleep(0.25)
+
+    assert slept == [0.25]
+    assert _utc_now().tzinfo == timezone.utc
 
 
 @pytest.mark.skipif(os.getenv("KOSIS_API_KEY") is None, reason="KOSIS_API_KEY not set")

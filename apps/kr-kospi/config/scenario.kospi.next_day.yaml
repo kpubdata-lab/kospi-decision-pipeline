@@ -7,3 +7,8 @@ agents:
   - valuation
   - volatility
   - decision
+
+runtime:
+  agents_config_path: apps/kr-kospi/config/agents.yaml
+  features_path: data/gold/features.parquet
+  output_dir: data/decisions

@@ -5,6 +5,8 @@ from datetime import date
 import os
 from pathlib import Path
 
+from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario
+
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry, LiveConnectorRegistry
 from .transforms.gold_features import GoldFeatureBuilder, gold_lookback_start, gold_sha256
 from .transforms.silver import DATASET_DEFINITIONS, SilverNormalizer, silver_sha256
@@ -111,6 +113,22 @@ def run_build_features_command(
     raise ValueError(f"unsupported feature layer: {layer}")
 
 
+def run_scenario_command(
+    *,
+    decision_date: str,
+    scenario: str,
+    features: str,
+    output_dir: str,
+) -> int:
+    _ = run_kospi_scenario(
+        Path(scenario),
+        parse_date(decision_date),
+        Path(features) if features != "" else None,
+        Path(output_dir) if output_dir != "" else None,
+    )
+    return 0
+
+
 class _CliArgs(argparse.Namespace):
     cmd: str | None = None
     layer: str = ""
@@ -121,6 +139,9 @@ class _CliArgs(argparse.Namespace):
     bronze_dir: str = "data/bronze"
     silver_dir: str = "data/silver"
     output_dir: str = ""
+    scenario: str = ""
+    features: str = ""
+    decision_date: str = ""
     live: bool = False
 
 
@@ -150,6 +171,14 @@ def main(argv: list[str] | None = None) -> int:
     _ = build_features_parser.add_argument("--bronze-dir", default="data/bronze")
     _ = build_features_parser.add_argument("--silver-dir", default="data/silver")
     _ = build_features_parser.add_argument("--out", dest="output_dir", default="")
+    run_scenario_parser = sub.add_parser("run-scenario", help="run ABDP next-day scenario")
+    _ = run_scenario_parser.add_argument("--date", dest="decision_date", required=True)
+    _ = run_scenario_parser.add_argument(
+        "--scenario",
+        default="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+    )
+    _ = run_scenario_parser.add_argument("--features", default="")
+    _ = run_scenario_parser.add_argument("--out", dest="output_dir", default="")
     for name in ("run", "backtest", "report"):
         _ = sub.add_parser(name, help=f"{name} (not yet implemented)")
     args = parser.parse_args(argv, namespace=_CliArgs())
@@ -183,6 +212,13 @@ def main(argv: list[str] | None = None) -> int:
             bronze_dir=str(args.bronze_dir),
             silver_dir=str(args.silver_dir),
             output_dir=output_dir,
+        )
+    if cmd == "run-scenario":
+        return run_scenario_command(
+            decision_date=str(args.decision_date),
+            scenario=str(args.scenario),
+            features=str(args.features),
+            output_dir=str(args.output_dir),
         )
     print(f"{cmd}: not yet implemented")
     return 0

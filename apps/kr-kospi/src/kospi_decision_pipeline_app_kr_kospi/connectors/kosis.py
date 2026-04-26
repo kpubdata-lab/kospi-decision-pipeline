@@ -16,6 +16,10 @@ from .base import ConnectorRowBase
 from .base import SourceMetadata
 
 
+class UnsupportedDatasetError(ValueError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class PerPbrPercentileRow(ConnectorRowBase):
     value_date: date
@@ -112,7 +116,7 @@ class LiveKosisConnector:
 
     def fetch_per_pbr_percentiles(self, start: date, end: date) -> tuple[PerPbrPercentileRow, ...]:
         del start, end
-        raise ValueError(
+        raise UnsupportedDatasetError(
             "KOSIS live ingest does not support per_pbr_percentiles in v0.2; "
             "only bronze macro_indicators is supported"
         )

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 import os
 from pathlib import Path
+import sys
 from typing import Protocol, cast
 
 import yaml
@@ -12,6 +13,7 @@ import yaml
 from kospi_decision_pipeline_core.backtest import BacktestRunner, WalkForwardSplitter
 from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario, run_kospi_snapshot
 
+from .connectors.kosis import UnsupportedDatasetError
 from .connectors.registry import LiveConnectorRegistry
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry
 from .transforms.calendar import TradingCalendar
@@ -302,16 +304,20 @@ def main(argv: list[str] | None = None) -> int:
         live_mode = _is_live_mode_requested(bool(args.live))
         if live_mode and str(args.snapshot_id).strip() == "":
             parser.error("--snapshot-id is required when live ingest is enabled")
-        return run_ingest_command(
-            source=str(args.source),
-            dataset=str(args.dataset),
-            start=str(args.start),
-            end=str(args.end),
-            output_dir=str(args.output_dir),
-            live=live_mode,
-            snapshot_id=str(args.snapshot_id) or None,
-            api_key=str(args.api_key) or None,
-        )
+        try:
+            return run_ingest_command(
+                source=str(args.source),
+                dataset=str(args.dataset),
+                start=str(args.start),
+                end=str(args.end),
+                output_dir=str(args.output_dir),
+                live=live_mode,
+                snapshot_id=str(args.snapshot_id) or None,
+                api_key=str(args.api_key) or None,
+            )
+        except UnsupportedDatasetError as error:
+            print(str(error), file=sys.stderr)
+            return 1
     if cmd == "build-features":
         layer = str(args.layer)
         if layer == "silver" and (str(args.source) == "" or str(args.dataset) == ""):

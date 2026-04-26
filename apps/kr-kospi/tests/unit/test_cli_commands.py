@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import sys
 from datetime import date, timedelta
 from decimal import Decimal
@@ -166,23 +165,42 @@ def _build_complete_silver_history(root: Path, days: list[date]) -> None:
         )
 
 
-def test_cli_stub_subcommand_output() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "kospi_decision_pipeline_app_kr_kospi", "run"],
-        cwd=REPO_ROOT,
-        env=ENV,
-        check=False,
-        capture_output=True,
-        text=True,
+def test_cli_main_routes_run_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_command",
+        fake_run_command,
     )
 
-    assert result.returncode == 0
-    assert result.stdout.strip() == "run: not yet implemented"
+    assert (
+        main(
+            [
+                "run",
+                "--scenario",
+                "tmp/scenario.yaml",
+                "--features",
+                "tmp/features.parquet",
+                "--out",
+                "tmp/decisions",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "scenario": "tmp/scenario.yaml",
+        "features": "tmp/features.parquet",
+        "output_dir": "tmp/decisions",
+    }
 
 
-def test_cli_main_returns_zero_for_run(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["run"]) == 0
-    assert capsys.readouterr().out.strip() == "run: not yet implemented"
+def test_cli_main_keeps_report_stub(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["report"]) == 0
+    assert capsys.readouterr().out.strip() == "report: not yet implemented"
 
 
 def test_cli_main_runs_fixture_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -720,7 +738,7 @@ def test_cli_main_prints_version_and_exits(capsys: pytest.CaptureFixture[str]) -
 
 
 def test_module_main_raises_system_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["kospi_decision_pipeline_app_kr_kospi", "run"])
+    monkeypatch.setattr(sys, "argv", ["kospi_decision_pipeline_app_kr_kospi", "--version"])
 
     try:
         _ = runpy.run_module("kospi_decision_pipeline_app_kr_kospi", run_name="__main__")

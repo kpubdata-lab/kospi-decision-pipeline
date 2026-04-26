@@ -13,6 +13,7 @@ import yaml
 from kospi_decision_pipeline_core.backtest import BacktestRunner, WalkForwardSplitter
 from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario, run_kospi_snapshot
 
+from .backtest import run_backtest
 from .connectors.kosis import UnsupportedDatasetError
 from .connectors.registry import LiveConnectorRegistry
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry
@@ -186,6 +187,31 @@ def run_backtest_command(
     return 0
 
 
+def backtest_command(
+    *,
+    features: str,
+    snapshot_root: str,
+    output_dir: str,
+    scenario: str,
+    agents: str,
+) -> int:
+    summary = run_backtest(
+        features_path=Path(features),
+        snapshot_root=Path(snapshot_root),
+        output_dir=Path(output_dir),
+        scenario_path=Path(scenario),
+        agents_path=Path(agents) if agents != "" else None,
+    )
+    print(
+        "backtest complete: "
+        f"evaluated_count={summary.evaluated_count} "
+        f"hit_rate={summary.hit_rate} "
+        f"skip_rate={summary.skip_rate} "
+        "(hit_rate excludes skip days from the denominator)"
+    )
+    return 0
+
+
 def _load_backtest_splitter(folds_config: str) -> WalkForwardSplitter:
     if folds_config == "":
         return WalkForwardSplitter()
@@ -235,7 +261,9 @@ class _CliArgs(argparse.Namespace):
     folds_config: str = ""
     live: bool = False
     snapshot_id: str = ""
+    snapshot_root: str = ""
     api_key: str = ""
+    agents: str = ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -293,8 +321,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ = run_parser.add_argument("--features", default="")
     _ = run_parser.add_argument("--out", dest="output_dir", default="")
-    for name in ("backtest", "report"):
-        _ = sub.add_parser(name, help=f"{name} (not yet implemented)")
+    backtest_parser = sub.add_parser(
+        "backtest",
+        help="run chronological backtest; hit_rate excludes skip days",
+        description=(
+            "Run a chronological backtest over Gold features; "
+            "summary hit_rate excludes skip days from the denominator."
+        ),
+        epilog="hit_rate excludes skip days from the denominator.",
+    )
+    _ = backtest_parser.add_argument("--features", required=True)
+    _ = backtest_parser.add_argument("--snapshot-root", required=True)
+    _ = backtest_parser.add_argument("--out", dest="output_dir", required=True)
+    _ = backtest_parser.add_argument(
+        "--scenario",
+        default="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+    )
+    _ = backtest_parser.add_argument("--agents", default="")
+    _ = sub.add_parser("report", help="report (not yet implemented)")
     args = parser.parse_args(argv, namespace=_CliArgs())
     cmd = args.cmd
     if cmd is None:
@@ -354,6 +398,14 @@ def main(argv: list[str] | None = None) -> int:
             scenario=str(args.scenario),
             output_dir=str(args.output_dir),
             folds_config=str(args.folds_config),
+        )
+    if cmd == "backtest":
+        return backtest_command(
+            features=str(args.features),
+            snapshot_root=str(args.snapshot_root),
+            output_dir=str(args.output_dir),
+            scenario=str(args.scenario),
+            agents=str(args.agents),
         )
     print(f"{cmd}: not yet implemented")
     return 0

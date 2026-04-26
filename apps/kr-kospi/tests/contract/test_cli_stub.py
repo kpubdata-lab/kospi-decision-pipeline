@@ -31,9 +31,19 @@ def test_cli_version() -> None:
     assert result.stdout.strip() == "0.0.1"
 
 
-def test_cli_help_lists_stubbed_subcommands() -> None:
+def test_cli_help_lists_supported_subcommands() -> None:
     result = run_cli("--help")
 
     assert result.returncode == 0
     for name in ("ingest", "build-features", "run", "backtest", "report"):
         assert name in result.stdout
+
+
+def test_backtest_help_is_not_a_stub() -> None:
+    result = run_cli("backtest", "--help")
+
+    assert result.returncode == 0
+    assert "not yet implemented" not in result.stdout
+    assert "--features" in result.stdout
+    assert "--snapshot-root" in result.stdout
+    assert "hit_rate excludes skip days" in result.stdout

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import json
 import os
+from pathlib import Path
 from typing import cast
 import pytest
 
@@ -12,6 +14,9 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
     MarketValuationRow,
     PykrxKrxConnector,
 )
+
+
+FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "krx"
 
 
 def _parse_pykrx_date(value: object) -> date:
@@ -55,9 +60,46 @@ class FakeDataFrame:
         return FakeDataFrame(dict(sorted(self._rows.items(), key=lambda item: str(item[0]))))
 
 
+def _load_frame_fixture(name: str) -> FakeDataFrame:
+    payload = cast(
+        dict[str, object], json.loads((FIXTURES_ROOT / name).read_text(encoding="utf-8"))
+    )
+    raw_rows = cast(list[dict[str, object]], payload["rows"])
+    rows: dict[object, dict[str, object]] = {}
+    for raw_row in raw_rows:
+        rows[datetime.fromisoformat(str(raw_row["index"]))] = cast(
+            dict[str, object], raw_row["values"]
+        )
+    return FakeDataFrame(rows)
+
+
+def _load_market_valuation_frames() -> tuple[FakeDataFrame, FakeDataFrame]:
+    payload = cast(
+        dict[str, object],
+        json.loads((FIXTURES_ROOT / "market_valuation_frames.json").read_text(encoding="utf-8")),
+    )
+
+    def _as_frame(frame_payload: object) -> FakeDataFrame:
+        mapping = cast(dict[str, object], frame_payload)
+        raw_rows = cast(list[dict[str, object]], mapping["rows"])
+        rows: dict[object, dict[str, object]] = {}
+        for raw_row in raw_rows:
+            rows[datetime.fromisoformat(str(raw_row["index"]))] = cast(
+                dict[str, object], raw_row["values"]
+            )
+        return FakeDataFrame(rows)
+
+    return (_as_frame(payload["ohlcv"]), _as_frame(payload["fundamental"]))
+
+
 class FakePykrxStockApi:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+        self._kospi_index_frame = _load_frame_fixture("kospi_index_frame.json")
+        self._investor_flow_frame = _load_frame_fixture("investor_flow_frame.json")
+        self._market_valuation_ohlcv_frame, self._market_valuation_fundamental_frame = (
+            _load_market_valuation_frames()
+        )
 
     def get_index_ohlcv_by_date(
         self,
@@ -76,27 +118,10 @@ class FakePykrxStockApi:
         )
         if fromdate == "20240106":
             return FakeDataFrame({})
-        return FakeDataFrame(
-            {
-                datetime(2024, 1, 3): {
-                    "시가": 2660.0,
-                    "고가": 2672.1,
-                    "저가": 2631.5,
-                    "종가": 2645.2,
-                    "거래량": 460000000,
-                    "거래대금": Decimal("9100000000000"),
-                    "상장시가총액": Decimal("2100000000000000"),
-                },
-                datetime(2024, 1, 2): {
-                    "시가": 2640.5,
-                    "고가": 2655.0,
-                    "저가": 2621.0,
-                    "종가": 2651.8,
-                    "거래량": 470000000,
-                    "거래대금": Decimal("9200000000000"),
-                    "상장시가총액": Decimal("2110000000000000"),
-                },
-            }
+        return (
+            self._market_valuation_ohlcv_frame
+            if fromdate == "20240102" and todate == "20240103"
+            else self._kospi_index_frame
         )
 
     def get_market_trading_value_by_date(
@@ -127,20 +152,7 @@ class FakePykrxStockApi:
         )
         if fromdate == "20240106":
             return FakeDataFrame({})
-        return FakeDataFrame(
-            {
-                datetime(2024, 1, 3): {
-                    "개인": Decimal("-200000000000"),
-                    "외국인합계": Decimal("150000000000"),
-                    "기관합계": Decimal("50000000000"),
-                },
-                datetime(2024, 1, 2): {
-                    "개인": Decimal("100000000000"),
-                    "외국인합계": Decimal("-120000000000"),
-                    "기관합계": Decimal("20000000000"),
-                },
-            }
-        )
+        return self._investor_flow_frame
 
     def get_index_fundamental_by_date(
         self,
@@ -158,12 +170,7 @@ class FakePykrxStockApi:
         )
         if fromdate == "20240106":
             return FakeDataFrame({})
-        return FakeDataFrame(
-            {
-                datetime(2024, 1, 3): {"PER": 12.5, "PBR": 0.95},
-                datetime(2024, 1, 2): {"PER": 12.2, "PBR": 0.93},
-            }
-        )
+        return self._market_valuation_fundamental_frame
 
 
 class InvalidDecimalStockApi(FakePykrxStockApi):
@@ -436,6 +443,30 @@ def test_pykrx_krx_connector_accepts_string_date_index_values() -> None:
     rows = connector.fetch_investor_flow(date(2024, 1, 2), date(2024, 1, 2))
 
     assert rows[0].trade_date == date(2024, 1, 2)
+
+
+def test_pykrx_krx_connector_frame_fixtures_capture_expected_adapter_shapes() -> None:
+    kospi_frame = _load_frame_fixture("kospi_index_frame.json")
+    investor_frame = _load_frame_fixture("investor_flow_frame.json")
+    valuation_ohlcv_frame, valuation_fundamental_frame = _load_market_valuation_frames()
+
+    assert kospi_frame.index.tolist() == [datetime(2024, 1, 3), datetime(2024, 1, 2)]
+    assert kospi_frame.at[datetime(2024, 1, 3), "시가"] == "2660.0"
+    assert investor_frame.at[datetime(2024, 1, 2), "외국인합계"] == "-120000000000"
+    assert valuation_ohlcv_frame.at[datetime(2024, 1, 2), "상장시가총액"] == "2110000000000000"
+    assert valuation_fundamental_frame.at[datetime(2024, 1, 3), "PER"] == "12.5"
+
+
+def test_pykrx_krx_connector_sorts_fixture_backed_rows_deterministically() -> None:
+    connector = PykrxKrxConnector(stock_api=FakePykrxStockApi())
+
+    kospi_rows = connector.fetch_kospi_index(date(2024, 1, 2), date(2024, 1, 3))
+    investor_rows = connector.fetch_investor_flow(date(2024, 1, 2), date(2024, 1, 3))
+    valuation_rows = connector.fetch_market_valuation(date(2024, 1, 2), date(2024, 1, 3))
+
+    assert tuple(row.trade_date for row in kospi_rows) == (date(2024, 1, 2), date(2024, 1, 3))
+    assert tuple(row.trade_date for row in investor_rows) == (date(2024, 1, 2), date(2024, 1, 3))
+    assert tuple(row.trade_date for row in valuation_rows) == (date(2024, 1, 2), date(2024, 1, 3))
 
 
 @pytest.mark.requires_network

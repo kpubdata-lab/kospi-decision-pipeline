@@ -20,6 +20,7 @@ from ..connectors import (
     KosisConnector,
     KrxConnector,
 )
+from ..connectors.kosis import UnsupportedDatasetError
 from ..connectors.base import ConnectorRowBase, SourceMetadata
 from .manifests import BronzeManifest, LiveIngestManifest, ManifestEntry, write_manifest
 
@@ -284,6 +285,8 @@ class BronzeIngestor:
 
             try:
                 rows = definition.fetch_rows(connector, current, current)
+            except UnsupportedDatasetError:
+                raise
             except Exception:
                 failed_dates.append(current)
                 current = current.fromordinal(current.toordinal() + 1)

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import LiveEcosConnector
+from kospi_decision_pipeline_app_kr_kospi.connectors.kosis import LiveKosisConnector
 from kospi_decision_pipeline_app_kr_kospi.connectors.krx import PykrxKrxConnector
 from kospi_decision_pipeline_app_kr_kospi.connectors.registry import (
     LiveConnectorRegistry,
@@ -55,11 +58,33 @@ def test_live_connector_registry_rejects_missing_required_api_key() -> None:
         _ = resolve_live_api_key(source="ecos", api_key=None, environment={})
 
 
-def test_live_connector_registry_rejects_kosis_until_issue_49() -> None:
+def test_live_connector_registry_returns_live_kosis_connector_with_explicit_api_key() -> None:
     registry = LiveConnectorRegistry(environment={})
 
-    with pytest.raises(NotImplementedError, match="#49"):
-        registry.get_connector("kosis")
+    connector = registry.get_connector("kosis", api_key="explicit-kosis-key")
+
+    assert isinstance(connector, LiveKosisConnector)
+
+
+def test_live_connector_registry_reads_kosis_environment_key() -> None:
+    assert (
+        resolve_live_api_key(
+            source="kosis",
+            api_key=None,
+            environment={"KOSIS_API_KEY": "env-kosis-key"},
+        )
+        == "env-kosis-key"
+    )
+
+
+def test_live_connector_registry_passes_environment_to_live_kosis_connector() -> None:
+    registry = LiveConnectorRegistry(environment={"KOSIS_API_KEY": "env-kosis-key"})
+
+    connector = registry.get_connector("kosis")
+
+    environment = getattr(connector, "_environment")
+    assert isinstance(environment, Mapping)
+    assert environment["KOSIS_API_KEY"] == "env-kosis-key"
 
 
 def test_live_connector_registry_rejects_unknown_source() -> None:

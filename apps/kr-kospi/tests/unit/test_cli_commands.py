@@ -728,6 +728,15 @@ def test_cli_main_prints_help_without_command(capsys: pytest.CaptureFixture[str]
     assert "build-features" in capsys.readouterr().out
 
 
+def test_cli_ingest_help_documents_bronze_only_kosis_live_support(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["ingest", "--help"])
+
+    assert "bronze-only" in capsys.readouterr().out.lower()
+
+
 def test_cli_main_prints_version_and_exits(capsys: pytest.CaptureFixture[str]) -> None:
     try:
         _ = main(["--version"])

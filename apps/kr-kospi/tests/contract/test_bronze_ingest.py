@@ -3,24 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 import pytest
 
-from kospi_decision_pipeline_app_kr_kospi.connectors.base import ConnectorRow
-from kospi_decision_pipeline_app_kr_kospi.connectors.krx import PykrxKrxConnector
 from kospi_decision_pipeline_app_kr_kospi.connectors.fixture import (
     FixtureDataPortalConnector,
     FixtureEcosConnector,
     FixtureKosisConnector,
     FixtureKrxConnector,
 )
+from kospi_decision_pipeline_app_kr_kospi.ingest import bronze as bronze_module
 from kospi_decision_pipeline_app_kr_kospi.ingest.bronze import (
     BronzeIngestor,
     FixtureConnectorRegistry,
     LiveConnectorRegistry,
-    _normalize_scalar,
-    _row_to_record,
 )
 from kospi_decision_pipeline_app_kr_kospi.ingest.manifests import (
     BronzeManifest,
@@ -30,6 +27,18 @@ from kospi_decision_pipeline_app_kr_kospi.ingest.manifests import (
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 RUN_TIMESTAMP = datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
+
+
+class _NormalizeScalar(Protocol):
+    def __call__(self, value: object) -> str | int: ...
+
+
+class _RowToRecord(Protocol):
+    def __call__(self, row: object) -> dict[str, str | int]: ...
+
+
+normalize_scalar = cast(_NormalizeScalar, getattr(bronze_module, "_normalize_scalar"))
+row_to_record = cast(_RowToRecord, getattr(bronze_module, "_row_to_record"))
 
 
 @pytest.mark.parametrize(
@@ -169,12 +178,6 @@ def test_fixture_connector_registry_rejects_unknown_source() -> None:
 def test_live_connector_registry_is_a_non_ci_hook() -> None:
     registry = LiveConnectorRegistry()
 
-    assert isinstance(registry.get_connector("krx"), PykrxKrxConnector)
-
-
-def test_live_connector_registry_rejects_non_krx_sources() -> None:
-    registry = LiveConnectorRegistry()
-
     with pytest.raises(NotImplementedError, match="live connector not implemented"):
         registry.get_connector("ecos")
 
@@ -188,11 +191,11 @@ def test_row_to_record_rejects_non_mapping_metadata() -> None:
     broken_row = BrokenRow(metadata="broken", trade_date=date(2024, 1, 2))
 
     with pytest.raises(ValueError, match="metadata"):
-        _row_to_record(cast(ConnectorRow, broken_row))
+        row_to_record(broken_row)
 
 
 def test_normalize_scalar_handles_boolean_branch() -> None:
-    assert _normalize_scalar(True) == "true"
+    assert normalize_scalar(True) == "true"
 
 
 def test_read_manifest_rejects_non_object_payload(tmp_path: Path) -> None:

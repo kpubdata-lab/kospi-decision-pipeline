@@ -19,6 +19,7 @@ from ..connectors import (
     FixtureKrxConnector,
     KosisConnector,
     KrxConnector,
+    PykrxKrxConnector,
 )
 from ..connectors.base import ConnectorRowBase, SourceMetadata
 from .manifests import BronzeManifest, LiveIngestManifest, ManifestEntry, write_manifest
@@ -366,4 +367,6 @@ class FixtureConnectorRegistry:
 @final
 class LiveConnectorRegistry:
     def get_connector(self, source: str) -> object:
+        if source == "krx":
+            return PykrxKrxConnector()
         raise NotImplementedError(f"live connector not implemented for source: {source}")

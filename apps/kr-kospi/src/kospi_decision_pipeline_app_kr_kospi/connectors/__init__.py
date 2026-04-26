@@ -8,7 +8,7 @@ from .fixture import (
     FixtureKrxConnector,
 )
 from .kosis import KosisConnector, KosisMacroIndicatorRow, PerPbrPercentileRow
-from .krx import InvestorFlowRow, KospiIndexRow, KrxConnector, MarketValuationRow
+from .krx import InvestorFlowRow, KospiIndexRow, KrxConnector, MarketValuationRow, PykrxKrxConnector
 
 __all__ = [
     "ConnectorRow",
@@ -29,5 +29,6 @@ __all__ = [
     "KrxConnector",
     "MarketValuationRow",
     "PerPbrPercentileRow",
+    "PykrxKrxConnector",
     "SourceMetadata",
 ]

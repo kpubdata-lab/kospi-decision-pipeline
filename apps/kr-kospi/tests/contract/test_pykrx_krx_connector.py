@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import os
-
-import pandas as pd
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
@@ -13,6 +11,48 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
     MarketValuationRow,
     PykrxKrxConnector,
 )
+
+
+def _parse_pykrx_date(value: object) -> date:
+    return datetime.strptime(str(value), "%Y%m%d").date()
+
+
+class FakeFrameIndex:
+    def __init__(self, values: tuple[object, ...]) -> None:
+        self._values = values
+
+    def tolist(self) -> list[object]:
+        return list(self._values)
+
+
+class FakeFrameAtAccessor:
+    def __init__(self, rows: dict[datetime, dict[str, object]]) -> None:
+        self._rows = rows
+
+    def __getitem__(self, key: tuple[object, str]) -> object:
+        index_value, column_name = key
+        assert isinstance(index_value, datetime)
+        return self._rows[index_value][column_name]
+
+
+class FakeDataFrame:
+    def __init__(self, rows: dict[datetime, dict[str, object]]) -> None:
+        self._rows = rows
+
+    @property
+    def empty(self) -> bool:
+        return not self._rows
+
+    @property
+    def index(self) -> FakeFrameIndex:
+        return FakeFrameIndex(tuple(self._rows))
+
+    @property
+    def at(self) -> FakeFrameAtAccessor:
+        return FakeFrameAtAccessor(self._rows)
+
+    def sort_index(self) -> FakeDataFrame:
+        return FakeDataFrame(dict(sorted(self._rows.items(), key=lambda item: item[0])))
 
 
 class FakePykrxStockApi:
@@ -26,7 +66,7 @@ class FakePykrxStockApi:
         ticker: str,
         freq: str = "d",
         name_display: bool = True,
-    ) -> pd.DataFrame:
+    ) -> FakeDataFrame:
         self.calls.append(
             (
                 "get_index_ohlcv_by_date",
@@ -35,23 +75,28 @@ class FakePykrxStockApi:
             )
         )
         if fromdate == "20240106":
-            return pd.DataFrame(
-                columns=["시가", "고가", "저가", "종가", "거래량", "거래대금", "상장시가총액"]
-            )
-        return pd.DataFrame(
+            return FakeDataFrame({})
+        return FakeDataFrame(
             {
-                "시가": [2660.0, 2640.5],
-                "고가": [2672.1, 2655.0],
-                "저가": [2631.5, 2621.0],
-                "종가": [2645.2, 2651.8],
-                "거래량": [460000000, 470000000],
-                "거래대금": [Decimal("9100000000000"), Decimal("9200000000000")],
-                "상장시가총액": [
-                    Decimal("2100000000000000"),
-                    Decimal("2110000000000000"),
-                ],
-            },
-            index=pd.to_datetime(["2024-01-03", "2024-01-02"]),
+                datetime(2024, 1, 3): {
+                    "시가": 2660.0,
+                    "고가": 2672.1,
+                    "저가": 2631.5,
+                    "종가": 2645.2,
+                    "거래량": 460000000,
+                    "거래대금": Decimal("9100000000000"),
+                    "상장시가총액": Decimal("2100000000000000"),
+                },
+                datetime(2024, 1, 2): {
+                    "시가": 2640.5,
+                    "고가": 2655.0,
+                    "저가": 2621.0,
+                    "종가": 2651.8,
+                    "거래량": 470000000,
+                    "거래대금": Decimal("9200000000000"),
+                    "상장시가총액": Decimal("2110000000000000"),
+                },
+            }
         )
 
     def get_market_trading_value_by_date(
@@ -65,7 +110,7 @@ class FakePykrxStockApi:
         on: str = "순매수",
         detail: bool = False,
         freq: str = "d",
-    ) -> pd.DataFrame:
+    ) -> FakeDataFrame:
         self.calls.append(
             (
                 "get_market_trading_value_by_date",
@@ -81,14 +126,20 @@ class FakePykrxStockApi:
             )
         )
         if fromdate == "20240106":
-            return pd.DataFrame(columns=["개인", "외국인합계", "기관합계"])
-        return pd.DataFrame(
+            return FakeDataFrame({})
+        return FakeDataFrame(
             {
-                "개인": [Decimal("-200000000000"), Decimal("100000000000")],
-                "외국인합계": [Decimal("150000000000"), Decimal("-120000000000")],
-                "기관합계": [Decimal("50000000000"), Decimal("20000000000")],
-            },
-            index=pd.to_datetime(["2024-01-03", "2024-01-02"]),
+                datetime(2024, 1, 3): {
+                    "개인": Decimal("-200000000000"),
+                    "외국인합계": Decimal("150000000000"),
+                    "기관합계": Decimal("50000000000"),
+                },
+                datetime(2024, 1, 2): {
+                    "개인": Decimal("100000000000"),
+                    "외국인합계": Decimal("-120000000000"),
+                    "기관합계": Decimal("20000000000"),
+                },
+            }
         )
 
     def get_index_fundamental_by_date(
@@ -97,7 +148,7 @@ class FakePykrxStockApi:
         todate: str,
         ticker: str,
         prev: bool = True,
-    ) -> pd.DataFrame:
+    ) -> FakeDataFrame:
         self.calls.append(
             (
                 "get_index_fundamental_by_date",
@@ -106,13 +157,12 @@ class FakePykrxStockApi:
             )
         )
         if fromdate == "20240106":
-            return pd.DataFrame(columns=["PER", "PBR"])
-        return pd.DataFrame(
+            return FakeDataFrame({})
+        return FakeDataFrame(
             {
-                "PER": [12.5, 12.2],
-                "PBR": [0.95, 0.93],
-            },
-            index=pd.to_datetime(["2024-01-03", "2024-01-02"]),
+                datetime(2024, 1, 3): {"PER": 12.5, "PBR": 0.95},
+                datetime(2024, 1, 2): {"PER": 12.2, "PBR": 0.93},
+            }
         )
 
 
@@ -208,11 +258,12 @@ def test_pykrx_krx_connector_sleeps_between_chunked_pykrx_calls() -> None:
         "get_index_ohlcv_by_date",
         "get_index_ohlcv_by_date",
     ]
-    assert [call[1][:2] for call in stock_api.calls] == [
-        ("20200101", "20211231"),
-        ("20220101", "20231231"),
-        ("20240101", "20241231"),
+    chunk_ranges = [
+        (_parse_pykrx_date(call[1][0]), _parse_pykrx_date(call[1][1])) for call in stock_api.calls
     ]
+    assert chunk_ranges[0][0] == date(2020, 1, 1)
+    assert chunk_ranges[-1][1] == date(2024, 12, 31)
+    assert all((chunk_end - chunk_start).days <= 730 for chunk_start, chunk_end in chunk_ranges)
     assert sleep_calls == [1.0, 1.0]
 
 

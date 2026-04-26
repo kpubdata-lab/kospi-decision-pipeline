@@ -1,0 +1,32 @@
+{
+  "StatisticSearch": {
+    "list_total_count": 3,
+    "RESULT": {
+      "CODE": "INFO-000",
+      "MESSAGE": "정상 처리되었습니다."
+    },
+    "row": [
+      {
+        "STAT_CODE": "722Y001",
+        "ITEM_CODE1": "0101000",
+        "ITEM_NAME1": "한국은행 기준금리",
+        "TIME": "20240102",
+        "DATA_VALUE": "3.50"
+      },
+      {
+        "STAT_CODE": "722Y001",
+        "ITEM_CODE1": "0101000",
+        "ITEM_NAME1": "한국은행 기준금리",
+        "TIME": "20240103",
+        "DATA_VALUE": "3.50"
+      },
+      {
+        "STAT_CODE": "722Y001",
+        "ITEM_CODE1": "0101000",
+        "ITEM_NAME1": "한국은행 기준금리",
+        "TIME": "20240104",
+        "DATA_VALUE": "3.50"
+      }
+    ]
+  }
+}

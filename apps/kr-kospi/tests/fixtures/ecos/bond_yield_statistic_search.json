@@ -1,0 +1,32 @@
+{
+  "StatisticSearch": {
+    "list_total_count": 3,
+    "RESULT": {
+      "CODE": "INFO-000",
+      "MESSAGE": "정상 처리되었습니다."
+    },
+    "row": [
+      {
+        "STAT_CODE": "817Y002",
+        "ITEM_CODE1": "010200000",
+        "ITEM_NAME1": "국고채(3년)",
+        "TIME": "20240102",
+        "DATA_VALUE": "3.23"
+      },
+      {
+        "STAT_CODE": "817Y002",
+        "ITEM_CODE1": "010200000",
+        "ITEM_NAME1": "국고채(3년)",
+        "TIME": "20240103",
+        "DATA_VALUE": "3.20"
+      },
+      {
+        "STAT_CODE": "817Y002",
+        "ITEM_CODE1": "010200000",
+        "ITEM_NAME1": "국고채(3년)",
+        "TIME": "20240104",
+        "DATA_VALUE": "3.18"
+      }
+    ]
+  }
+}

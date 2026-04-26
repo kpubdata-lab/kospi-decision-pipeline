@@ -228,6 +228,7 @@ def test_silver_normalizer_normalizes_fixture_bronze_rows(
     )
     bronze_result = bronze_ingestor.ingest(
         connector=connector,
+        source=str(expected_row["source_name"]),
         dataset_id=dataset_id,
         start=start_date,
         end=end_date,
@@ -317,6 +318,7 @@ def test_silver_normalizer_raises_typed_error_for_non_trading_day(tmp_path: Path
     )
     bronze_result = bronze_ingestor.ingest(
         connector=FixtureKrxConnector(FIXTURES_ROOT),
+        source="krx",
         dataset_id="kospi_index",
         start=date(2024, 1, 1),
         end=date(2024, 1, 1),
@@ -335,6 +337,7 @@ def test_silver_normalizer_is_deterministic_for_identical_bronze_input(tmp_path:
     )
     bronze_result = bronze_ingestor.ingest(
         connector=FixtureKrxConnector(FIXTURES_ROOT),
+        source="krx",
         dataset_id="investor_flow",
         start=date(2024, 1, 2),
         end=date(2024, 1, 3),
@@ -392,6 +395,7 @@ def test_silver_normalizer_normalize_dataset_skips_missing_dates(tmp_path: Path)
     )
     _ = bronze_ingestor.ingest(
         connector=FixtureKrxConnector(FIXTURES_ROOT),
+        source="krx",
         dataset_id="kospi_index",
         start=date(2024, 1, 2),
         end=date(2024, 1, 2),
@@ -534,6 +538,7 @@ def test_silver_sha256_matches_file_bytes(tmp_path: Path) -> None:
     )
     bronze_result = bronze_ingestor.ingest(
         connector=FixtureKrxConnector(FIXTURES_ROOT),
+        source="krx",
         dataset_id="investor_flow",
         start=date(2024, 1, 2),
         end=date(2024, 1, 2),

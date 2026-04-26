@@ -503,6 +503,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "abdp" },
+    { name = "httpx" },
     { name = "kpubdata" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -530,6 +531,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "abdp", git = "https://github.com/yeongseon/agent-based-decision-pipeline.git?rev=9520cfed7e150f644fb5d01bb1a9b32eb0082f8d" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "kpubdata", specifier = ">=0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pandas" },

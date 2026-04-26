@@ -222,6 +222,8 @@ def test_cli_main_runs_fixture_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
         "end": "2024-01-04",
         "output_dir": "tmp/bronze",
         "live": False,
+        "snapshot_id": None,
+        "api_key": None,
     }
 
 
@@ -250,11 +252,52 @@ def test_cli_main_enables_live_mode_with_flag(monkeypatch: pytest.MonkeyPatch) -
                 "--to",
                 "2024-01-04",
                 "--live",
+                "--snapshot-id",
+                "snapshot-20240115T000000Z",
             ]
         )
         == 0
     )
     assert captured["live"] is True
+    assert captured["snapshot_id"] == "snapshot-20240115T000000Z"
+
+
+def test_cli_main_routes_live_snapshot_id_and_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_ingest_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_ingest_command",
+        fake_run_ingest_command,
+    )
+
+    assert (
+        main(
+            [
+                "ingest",
+                "--live",
+                "--source",
+                "ecos",
+                "--dataset",
+                "base_rate",
+                "--from",
+                "2024-01-02",
+                "--to",
+                "2024-01-04",
+                "--snapshot-id",
+                "snapshot-20240115T000000Z",
+                "--api-key",
+                "cli-key",
+            ]
+        )
+        == 0
+    )
+    assert captured["live"] is True
+    assert captured["snapshot_id"] == "snapshot-20240115T000000Z"
+    assert captured["api_key"] == "cli-key"
 
 
 def test_cli_main_enables_live_mode_with_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -282,11 +325,14 @@ def test_cli_main_enables_live_mode_with_env_var(monkeypatch: pytest.MonkeyPatch
                 "2024-01-02",
                 "--to",
                 "2024-01-04",
+                "--snapshot-id",
+                "snapshot-20240115T000000Z",
             ]
         )
         == 0
     )
     assert captured["live"] is True
+    assert captured["snapshot_id"] == "snapshot-20240115T000000Z"
 
 
 def test_run_ingest_command_writes_fixture_output(
@@ -485,6 +531,7 @@ def test_run_build_features_command_writes_silver_output(
 ) -> None:
     bronze_result = BronzeIngestor(output_root=tmp_path / "bronze").ingest(
         connector=FixtureConnectorRegistry(fixtures_root()).get_connector("krx"),
+        source="krx",
         dataset_id="kospi_index",
         start=parse_date("2024-01-02"),
         end=parse_date("2024-01-03"),
@@ -754,10 +801,10 @@ def test_run_build_features_command_writes_all_layers_output(
         compression="snappy",
     )
 
-    def fake_normalize_dataset(self: SilverNormalizer, **_: object) -> tuple[Path, ...]:
+    def fake_normalize_dataset(_self: SilverNormalizer, **_: object) -> tuple[Path, ...]:
         return (written_silver_path,)
 
-    def fake_build(self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
+    def fake_build(_self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
         assert silver_root == tmp_path / "silver"
         assert start.isoformat() == "2025-02-13"
         assert end.isoformat() == "2025-02-14"
@@ -805,13 +852,13 @@ def test_run_build_features_command_uses_warmup_start_for_all_layer(tmp_path: Pa
         compression="snappy",
     )
 
-    def fake_normalize_dataset(self: SilverNormalizer, **kwargs: object) -> tuple[Path, ...]:
+    def fake_normalize_dataset(_self: SilverNormalizer, **kwargs: object) -> tuple[Path, ...]:
         start = kwargs.get("start")
         assert isinstance(start, date)
         captured_starts.append(start)
         return ()
 
-    def fake_build(self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
+    def fake_build(_self: GoldFeatureBuilder, *, silver_root: Path, start: date, end: date) -> Path:
         assert silver_root == tmp_path / "silver"
         assert start == date(2025, 2, 13)
         assert end == date(2025, 2, 13)

@@ -52,3 +52,4 @@ def test_snapshot_aware_ingest_writes_snapshot_root_and_live_manifest(tmp_path: 
     assert manifest.source_metadata.dataset_name == "kospi_index"
     assert manifest.source_metadata.connector_id.endswith("FixtureKrxConnector")
     assert manifest.source_metadata.fetched_at_utc == RUN_TIMESTAMP.isoformat()
+    assert manifest.to_deterministic_dict()["snapshot_id"] == "snapshot-20240115T000000Z"

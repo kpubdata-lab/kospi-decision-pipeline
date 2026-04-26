@@ -20,6 +20,7 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import (
     EcosBondYieldRow,
     EcosConnector,
     EcosUsdKrwRow,
+    LiveEcosConnector,
 )
 from kospi_decision_pipeline_app_kr_kospi.connectors.fixture import (
     FixtureDataPortalConnector,
@@ -164,6 +165,7 @@ def test_connectors_package_exports_fixture_connectors() -> None:
     assert connectors.FixtureEcosConnector is FixtureEcosConnector
     assert connectors.FixtureKosisConnector is FixtureKosisConnector
     assert connectors.FixtureDataPortalConnector is FixtureDataPortalConnector
+    assert connectors.LiveEcosConnector is LiveEcosConnector
 
 
 def test_connector_modules_do_not_read_fixtures_at_import_time(

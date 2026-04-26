@@ -1,6 +1,12 @@
 from .base import ConnectorRow, SourceMetadata
 from .data_portal import DataPortalConnector, DataPortalSampleRow
-from .ecos import EcosBaseRateRow, EcosBondYieldRow, EcosConnector, EcosUsdKrwRow
+from .ecos import (
+    EcosBaseRateRow,
+    EcosBondYieldRow,
+    EcosConnector,
+    EcosUsdKrwRow,
+    LiveEcosConnector,
+)
 from .fixture import (
     FixtureDataPortalConnector,
     FixtureEcosConnector,
@@ -18,6 +24,7 @@ __all__ = [
     "EcosBondYieldRow",
     "EcosConnector",
     "EcosUsdKrwRow",
+    "LiveEcosConnector",
     "FixtureDataPortalConnector",
     "FixtureEcosConnector",
     "FixtureKosisConnector",

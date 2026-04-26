@@ -17,10 +17,10 @@ from kospi_decision_pipeline_app_kr_kospi.ingest import bronze as bronze_module
 from kospi_decision_pipeline_app_kr_kospi.ingest.bronze import (
     BronzeIngestor,
     FixtureConnectorRegistry,
-    LiveConnectorRegistry,
 )
 from kospi_decision_pipeline_app_kr_kospi.ingest.manifests import (
     BronzeManifest,
+    LiveIngestManifest,
     read_manifest,
 )
 
@@ -62,6 +62,7 @@ def test_bronze_ingest_supports_all_fixture_datasets(
 
     result = ingestor.ingest(
         connector=connector,
+        source=source_name,
         dataset_id=dataset_id,
         start=date(2024, 1, 2),
         end=date(2024, 1, 4),
@@ -76,6 +77,7 @@ def _run_ingest(output_root: Path) -> tuple[tuple[str, ...], BronzeManifest]:
     ingestor = BronzeIngestor(output_root=output_root, deterministic_run_timestamp=RUN_TIMESTAMP)
     result = ingestor.ingest(
         connector=connector,
+        source="krx",
         dataset_id="kospi_index",
         start=date(2024, 1, 2),
         end=date(2024, 1, 4),
@@ -90,6 +92,7 @@ def test_fixture_bronze_ingest_writes_partitioned_parquet_and_manifest(tmp_path:
 
     result = ingestor.ingest(
         connector=connector,
+        source="krx",
         dataset_id="kospi_index",
         start=date(2024, 1, 2),
         end=date(2024, 1, 4),
@@ -137,7 +140,22 @@ def test_bronze_ingest_raises_for_unknown_dataset(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unsupported dataset"):
         ingestor.ingest(
             connector=connector,
+            source="krx",
             dataset_id="missing_dataset",
+            start=date(2024, 1, 2),
+            end=date(2024, 1, 4),
+        )
+
+
+def test_bronze_ingest_rejects_dataset_source_mismatch(tmp_path: Path) -> None:
+    connector = FixtureKrxConnector(FIXTURES_ROOT)
+    ingestor = BronzeIngestor(output_root=tmp_path, deterministic_run_timestamp=RUN_TIMESTAMP)
+
+    with pytest.raises(ValueError, match="dataset kospi_index is not supported for source ecos"):
+        ingestor.ingest(
+            connector=connector,
+            source="ecos",
+            dataset_id="kospi_index",
             start=date(2024, 1, 2),
             end=date(2024, 1, 4),
         )
@@ -149,6 +167,7 @@ def test_bronze_ingest_uses_current_time_when_no_deterministic_timestamp(tmp_pat
 
     result = ingestor.ingest(
         connector=connector,
+        source="krx",
         dataset_id="kospi_index",
         start=date(2024, 1, 2),
         end=date(2024, 1, 2),
@@ -175,13 +194,6 @@ def test_fixture_connector_registry_rejects_unknown_source() -> None:
         registry.get_connector("missing")
 
 
-def test_live_connector_registry_is_a_non_ci_hook() -> None:
-    registry = LiveConnectorRegistry()
-
-    with pytest.raises(NotImplementedError, match="live connector not implemented"):
-        registry.get_connector("ecos")
-
-
 def test_row_to_record_rejects_non_mapping_metadata() -> None:
     @dataclass(frozen=True, slots=True)
     class BrokenRow:
@@ -204,3 +216,31 @@ def test_read_manifest_rejects_non_object_payload(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="manifest payload must be an object"):
         read_manifest(manifest_path)
+
+
+def test_live_bronze_ingest_records_failed_dates_without_writing_partitions(tmp_path: Path) -> None:
+    @dataclass(frozen=True, slots=True)
+    class FailingLiveConnector:
+        def fetch_base_rate_series(self, start: date, end: date) -> tuple[object, ...]:
+            raise RuntimeError(f"boom for {start.isoformat()}..{end.isoformat()}")
+
+    ingestor = BronzeIngestor(output_root=tmp_path, deterministic_run_timestamp=RUN_TIMESTAMP)
+
+    result = ingestor.ingest(
+        connector=FailingLiveConnector(),
+        source="ecos",
+        dataset_id="base_rate",
+        start=date(2024, 1, 2),
+        end=date(2024, 1, 3),
+        snapshot_id="snapshot-20240115T000000Z",
+    )
+    manifest = read_manifest(result.manifest_path)
+
+    assert result.entries == ()
+    assert isinstance(manifest, LiveIngestManifest)
+    assert manifest.written_dates == ()
+    assert manifest.skipped_dates == ()
+    assert manifest.failed_dates == (date(2024, 1, 2), date(2024, 1, 3))
+    assert not (
+        tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "2024-01-02.parquet"
+    ).exists()

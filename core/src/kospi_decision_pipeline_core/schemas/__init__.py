@@ -2,6 +2,7 @@ from .config import (
     AgentRuleConfig,
     AgentWeightConfig,
     AgentsConfig,
+    ScenarioRuntimeConfig,
     ScenarioConfig,
     ThresholdsConfig,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "GroundTruthLabel",
     "from_jsonl_line",
     "ModelLabel",
+    "ScenarioRuntimeConfig",
     "ScenarioConfig",
     "ThresholdsConfig",
     "to_csv_row",

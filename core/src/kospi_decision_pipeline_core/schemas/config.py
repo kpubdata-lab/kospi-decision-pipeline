@@ -115,6 +115,13 @@ class ScenarioConfigDict(TypedDict):
     scenario_id: str
     horizon: Literal["next_day"]
     agents: list[str]
+    runtime: "ScenarioRuntimeConfigDict"
+
+
+class ScenarioRuntimeConfigDict(TypedDict):
+    agents_config_path: str
+    features_path: str
+    output_dir: str
 
 
 class _AgentsConfigRequiredDict(TypedDict):
@@ -211,10 +218,42 @@ class AgentsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ScenarioRuntimeConfig:
+    agents_config_path: str
+    features_path: str
+    output_dir: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "agents_config_path",
+            _ensure_non_empty_string(self.agents_config_path, context="agents_config_path"),
+        )
+        object.__setattr__(
+            self,
+            "features_path",
+            _ensure_non_empty_string(self.features_path, context="features_path"),
+        )
+        object.__setattr__(
+            self,
+            "output_dir",
+            _ensure_non_empty_string(self.output_dir, context="output_dir"),
+        )
+
+    def to_dict(self) -> ScenarioRuntimeConfigDict:
+        return {
+            "agents_config_path": self.agents_config_path,
+            "features_path": self.features_path,
+            "output_dir": self.output_dir,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ScenarioConfig:
     scenario_id: str
     horizon: Literal["next_day"]
     agents: tuple[str, ...]
+    runtime: ScenarioRuntimeConfig
 
     def __post_init__(self) -> None:
         scenario_id = _ensure_string(self.scenario_id, context="scenario_id")
@@ -224,12 +263,15 @@ class ScenarioConfig:
         _validate_known_agent_ids(agent_ids, context="agents")
         object.__setattr__(self, "scenario_id", scenario_id)
         object.__setattr__(self, "agents", agent_ids)
+        if not isinstance(self.runtime, ScenarioRuntimeConfig):
+            raise ValueError("runtime must be a ScenarioRuntimeConfig")
 
     def to_dict(self) -> ScenarioConfigDict:
         return {
             "scenario_id": self.scenario_id,
             "horizon": self.horizon,
             "agents": list(self.agents),
+            "runtime": self.runtime.to_dict(),
         }
 
 
@@ -258,11 +300,17 @@ def load_agents_config(path: Path) -> AgentsConfig:
 def load_scenario_config(path: Path) -> ScenarioConfig:
     payload = _load_yaml_mapping(path)
     agents_payload = _require_sequence(payload, "agents")
+    runtime_payload = _require_mapping(payload, "runtime")
 
     return ScenarioConfig(
         scenario_id=_require_string(payload, "scenario_id"),
         horizon=_require_horizon(payload),
         agents=tuple(_normalize_string_sequence(agents_payload, context="agents")),
+        runtime=ScenarioRuntimeConfig(
+            agents_config_path=_require_string(runtime_payload, "agents_config_path"),
+            features_path=_require_string(runtime_payload, "features_path"),
+            output_dir=_require_string(runtime_payload, "output_dir"),
+        ),
     )
 
 
@@ -321,6 +369,13 @@ def _ensure_string(value: object, context: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{context} must be a string")
     return value
+
+
+def _ensure_non_empty_string(value: object, context: str) -> str:
+    text = _ensure_string(value, context=context)
+    if text == "":
+        raise ValueError(f"{context} must be a non-empty string")
+    return text
 
 
 def _ensure_float(value: object, context: str) -> float:

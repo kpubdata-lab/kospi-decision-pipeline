@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 import yaml
 
-from kospi_decision_pipeline_core.schemas import DecisionResult
+from kospi_decision_pipeline_core.schemas import DecisionResult, ModelLabel
 
 
 class _ArrowTable(Protocol):
@@ -21,10 +21,64 @@ class _ArrowTableFactory(Protocol):
     def from_pylist(self, mapping: list[dict[str, object]]) -> _ArrowTable: ...
 
 
+class _ReadTable(Protocol):
+    def __call__(self, source: Path) -> _ArrowTable: ...
+
+
 class _WriteTable(Protocol):
     def __call__(self, table: _ArrowTable, where: Path, *, compression: str) -> None: ...
 
 
+class _ScenarioInvoker(Protocol):
+    def __call__(
+        self,
+        scenario_path: Path | str,
+        decision_date: date,
+        features_path: Path | None,
+        output_dir: Path | None,
+    ) -> DecisionResult: ...
+
+
+class _LoadFeatureRows(Protocol):
+    def __call__(self, features_path: Path) -> tuple[dict[str, object], ...]: ...
+
+
+class _WriteRuntimeScenarioOverride(Protocol):
+    def __call__(
+        self,
+        *,
+        scenario_path: Path,
+        features_path: Path,
+        output_dir: Path,
+        agents_path: Path | None,
+    ) -> Path: ...
+
+
+class _TruthLabel(Protocol):
+    def __call__(self, snapshot_root: Path, *, decision_date: date) -> str | None: ...
+
+
+class _LoadKrxClose(Protocol):
+    def __call__(self, snapshot_root: Path, trading_date: date) -> float | None: ...
+
+
+class _SummaryLike(Protocol):
+    def to_mapping(self) -> dict[str, object]: ...
+
+
+class _Summarize(Protocol):
+    def __call__(self, rows: list[object]) -> _SummaryLike: ...
+
+
+class _RequireDate(Protocol):
+    def __call__(self, row: dict[str, object], key: str) -> date: ...
+
+
+class _RequireFloatField(Protocol):
+    def __call__(self, row: dict[str, object], key: str) -> float: ...
+
+
+READ_TABLE = cast(_ReadTable, getattr(pq, "read_table"))
 WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
 
 
@@ -58,6 +112,18 @@ def _write_krx_close(snapshot_root: Path, trading_date: date, close: float) -> N
     )
 
 
+def _require_model_label(value: object) -> ModelLabel:
+    if value not in {"up", "down", "skip"}:
+        raise ValueError(f"unexpected model label: {value}")
+    return cast(ModelLabel, value)
+
+
+def _require_float(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"unexpected numeric value: {value}")
+    return float(value)
+
+
 def _features_rows() -> list[dict[str, object]]:
     return [
         {"as_of_date": date(2025, 2, 3), "expected_decision": "up", "marker": 1},
@@ -82,7 +148,7 @@ def _scenario_payload(
     }
 
 
-def _decision_invoker_factory() -> object:
+def _decision_invoker_factory() -> _ScenarioInvoker:
     def fake_scenario_invoker(
         scenario_path: Path | str,
         decision_date: date,
@@ -92,7 +158,7 @@ def _decision_invoker_factory() -> object:
         assert output_dir is not None
         assert Path(scenario_path).is_file()
         assert features_path is not None
-        rows = cast(list[dict[str, object]], pq.read_table(features_path).to_pylist())
+        rows = READ_TABLE(features_path).to_pylist()
         assert rows
         current_row = rows[-1]
         current_as_of_date = cast(date, current_row["as_of_date"])
@@ -104,8 +170,8 @@ def _decision_invoker_factory() -> object:
         ][: len(rows)]
         return DecisionResult(
             decision_date=decision_date,
-            label=cast(str, current_row["expected_decision"]),
-            aggregate_score=float(current_row["marker"]),
+            label=_require_model_label(current_row["expected_decision"]),
+            aggregate_score=_require_float(current_row["marker"]),
             threshold_up=0.25,
             threshold_down=-0.25,
             votes=(),
@@ -249,3 +315,151 @@ def test_backtest_command_is_identical_when_future_rows_are_removed(
     assert (full_output_dir / "rows.jsonl").read_text(encoding="utf-8") == (
         prefix_output_dir / "rows.jsonl"
     ).read_text(encoding="utf-8")
+
+
+def test_backtest_runner_rejects_empty_features_and_duplicate_dates(tmp_path: Path) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.backtest import runner as runner_module
+
+    load_feature_rows = cast(_LoadFeatureRows, getattr(runner_module, "_load_feature_rows"))
+    empty_path = tmp_path / "empty.parquet"
+    duplicate_path = tmp_path / "duplicate.parquet"
+    _write_parquet(empty_path, [])
+    _write_parquet(
+        duplicate_path,
+        [
+            {"as_of_date": date(2025, 2, 3)},
+            {"as_of_date": date(2025, 2, 3)},
+        ],
+    )
+
+    with pytest.raises(ValueError, match="features parquet must not be empty"):
+        load_feature_rows(empty_path)
+    with pytest.raises(ValueError, match="expected unique as_of_date values in gold features"):
+        load_feature_rows(duplicate_path)
+
+
+def test_backtest_runner_validates_scenario_runtime_shape_and_optional_agents(
+    tmp_path: Path,
+) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.backtest import runner as runner_module
+
+    write_runtime_scenario_override = cast(
+        _WriteRuntimeScenarioOverride,
+        getattr(runner_module, "_write_runtime_scenario_override"),
+    )
+    scenario_path = tmp_path / "scenario.yaml"
+    features_path = tmp_path / "gold.parquet"
+    output_dir = tmp_path / "out"
+    _ = scenario_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="scenario payload must be a mapping"):
+        write_runtime_scenario_override(
+            scenario_path=scenario_path,
+            features_path=features_path,
+            output_dir=output_dir,
+            agents_path=None,
+        )
+
+    _write_yaml(scenario_path, {"scenario_id": "broken"})
+    _write_parquet(features_path, [{"as_of_date": date(2025, 2, 3)}])
+
+    with pytest.raises(ValueError, match="runtime must be a mapping"):
+        write_runtime_scenario_override(
+            scenario_path=scenario_path,
+            features_path=features_path,
+            output_dir=output_dir,
+            agents_path=None,
+        )
+
+    _write_yaml(
+        scenario_path,
+        {
+            "scenario_id": "kospi.next_day",
+            "runtime": {
+                "agents_config_path": "agents.yaml",
+                "features_path": "old.parquet",
+                "output_dir": "old-out",
+            },
+        },
+    )
+    override_path = write_runtime_scenario_override(
+        scenario_path=scenario_path,
+        features_path=features_path,
+        output_dir=output_dir,
+        agents_path=None,
+    )
+    payload = yaml.safe_load(override_path.read_text(encoding="utf-8"))
+    assert payload["runtime"]["features_path"] == str(features_path)
+    assert payload["runtime"]["output_dir"] == str(output_dir)
+    assert payload["runtime"]["agents_config_path"] == "agents.yaml"
+
+
+def test_backtest_runner_validates_bronze_truth_inputs(tmp_path: Path) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.backtest import runner as runner_module
+
+    truth_label = cast(_TruthLabel, getattr(runner_module, "_truth_label"))
+    load_krx_close = cast(_LoadKrxClose, getattr(runner_module, "_load_krx_close"))
+    snapshot_root = tmp_path / "snapshot-root"
+    _write_krx_close(snapshot_root, date(2025, 2, 4), 100.0)
+
+    with pytest.raises(ValueError, match="missing KRX close for 2025-02-03"):
+        truth_label(snapshot_root, decision_date=date(2025, 2, 3))
+
+    _write_krx_close(snapshot_root, date(2025, 2, 3), 0.0)
+    with pytest.raises(ValueError, match="KRX closes must be positive"):
+        truth_label(snapshot_root, decision_date=date(2025, 2, 3))
+
+    multirow_path = snapshot_root / "krx" / "kospi_index" / "2025-02-05.parquet"
+    _write_parquet(
+        multirow_path,
+        [
+            {"trade_date": date(2025, 2, 5), "close": 100.0},
+            {"trade_date": date(2025, 2, 5), "close": 101.0},
+        ],
+    )
+    with pytest.raises(ValueError, match="expected exactly one KRX row for 2025-02-05"):
+        load_krx_close(snapshot_root, date(2025, 2, 5))
+
+
+def test_backtest_runner_rejects_non_evaluable_run_and_invalid_scalars(tmp_path: Path) -> None:
+    from kospi_decision_pipeline_app_kr_kospi.backtest import runner as runner_module
+
+    summarize = cast(_Summarize, getattr(runner_module, "_summarize"))
+    require_date = cast(_RequireDate, getattr(runner_module, "_require_date"))
+    require_float_field = cast(_RequireFloatField, getattr(runner_module, "_require_float"))
+    features_path = tmp_path / "gold" / "decision_features.parquet"
+    snapshot_root = tmp_path / "snapshot-root"
+    output_dir = tmp_path / "backtest"
+    scenario_path = tmp_path / "scenario.yaml"
+    agents_path = tmp_path / "agents.yaml"
+    _write_parquet(
+        features_path, [{"as_of_date": date(2025, 2, 3), "expected_decision": "skip", "marker": 1}]
+    )
+    _write_krx_close(snapshot_root, date(2025, 2, 3), 100.0)
+    _write_yaml(
+        agents_path, {"weights": {}, "thresholds": {"up": 0.25, "down": -0.25}, "agents": {}}
+    )
+    _write_yaml(scenario_path, _scenario_payload(agents_path, features_path, output_dir))
+
+    with pytest.raises(ValueError, match="backtest produced no evaluable rows"):
+        runner_module.run_backtest(
+            features_path=features_path,
+            snapshot_root=snapshot_root,
+            output_dir=output_dir,
+            scenario_path=scenario_path,
+            agents_path=agents_path,
+            scenario_invoker=_decision_invoker_factory(),
+        )
+
+    assert summarize([]).to_mapping() == {
+        "evaluated_count": 0,
+        "hit_count": 0,
+        "skip_count": 0,
+        "hit_rate": None,
+        "skip_rate": None,
+        "hit_rate_denominator": "evaluated_count - skip_count (skip excluded)",
+    }
+    with pytest.raises(ValueError, match="as_of_date must be a date"):
+        require_date({"as_of_date": "2025-02-03"}, "as_of_date")
+    with pytest.raises(ValueError, match="close must be a numeric scalar"):
+        require_float_field({"close": object()}, "close")

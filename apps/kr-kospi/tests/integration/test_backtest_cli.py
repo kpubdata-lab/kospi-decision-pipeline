@@ -8,8 +8,6 @@ from typing import Protocol, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import yaml
-
 from kospi_decision_pipeline_app_kr_kospi.cli import main
 from kospi_decision_pipeline_app_kr_kospi.transforms.calendar import TradingCalendar
 from kospi_decision_pipeline_app_kr_kospi.transforms.gold_features import GoldFeatureBuilder
@@ -178,6 +176,11 @@ def test_backtest_cli_is_deterministic_on_fixed_gold_window(tmp_path: Path) -> N
     silver_root = tmp_path / "silver"
     snapshot_root = tmp_path / "snapshot-root"
     _build_complete_history(silver_root, snapshot_root, days)
+    _write_bronze_close(
+        snapshot_root,
+        TradingCalendar().next_trading_day(days[-1]),
+        Decimal(100 + len(days)),
+    )
     features_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
         silver_root=silver_root,
         start=days[-3],

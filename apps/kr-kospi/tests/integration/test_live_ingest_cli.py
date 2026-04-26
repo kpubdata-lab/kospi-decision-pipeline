@@ -217,6 +217,36 @@ def test_cli_main_live_ingest_writes_snapshot_partition_layout(
     ).is_file()
 
 
+def test_cli_main_fails_clearly_for_unsupported_live_kosis_dataset(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        main(
+            [
+                "ingest",
+                "--live",
+                "--source",
+                "kosis",
+                "--dataset",
+                "per_pbr_percentiles",
+                "--from",
+                "2024-01-01",
+                "--to",
+                "2024-01-31",
+                "--snapshot-id",
+                "snapshot-20240115T000000Z",
+                "--api-key",
+                "cli-key",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        == 1
+    )
+
+    assert "per_pbr_percentiles" in capsys.readouterr().err
+
+
 @pytest.mark.skipif(os.getenv("KOSIS_API_KEY") is None, reason="KOSIS_API_KEY not set")
 def test_run_ingest_command_live_kosis_writes_verified_bronze_partition(tmp_path: Path) -> None:
     assert (

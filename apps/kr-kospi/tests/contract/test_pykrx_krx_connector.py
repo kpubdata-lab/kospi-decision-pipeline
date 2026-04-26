@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import os
+from typing import cast
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
@@ -26,17 +27,16 @@ class FakeFrameIndex:
 
 
 class FakeFrameAtAccessor:
-    def __init__(self, rows: dict[datetime, dict[str, object]]) -> None:
+    def __init__(self, rows: dict[object, dict[str, object]]) -> None:
         self._rows = rows
 
     def __getitem__(self, key: tuple[object, str]) -> object:
         index_value, column_name = key
-        assert isinstance(index_value, datetime)
         return self._rows[index_value][column_name]
 
 
 class FakeDataFrame:
-    def __init__(self, rows: dict[datetime, dict[str, object]]) -> None:
+    def __init__(self, rows: dict[object, dict[str, object]]) -> None:
         self._rows = rows
 
     @property
@@ -52,7 +52,7 @@ class FakeDataFrame:
         return FakeFrameAtAccessor(self._rows)
 
     def sort_index(self) -> FakeDataFrame:
-        return FakeDataFrame(dict(sorted(self._rows.items(), key=lambda item: item[0])))
+        return FakeDataFrame(dict(sorted(self._rows.items(), key=lambda item: str(item[0]))))
 
 
 class FakePykrxStockApi:
@@ -166,6 +166,113 @@ class FakePykrxStockApi:
         )
 
 
+class InvalidDecimalStockApi(FakePykrxStockApi):
+    def get_index_ohlcv_by_date(
+        self,
+        fromdate: str,
+        todate: str,
+        ticker: str,
+        freq: str = "d",
+        name_display: bool = True,
+    ) -> FakeDataFrame:
+        return FakeDataFrame(
+            {
+                datetime(2024, 1, 2): {
+                    "시가": "bad-decimal",
+                    "고가": 1,
+                    "저가": 1,
+                    "종가": 1,
+                    "거래량": 1,
+                    "거래대금": 1,
+                    "상장시가총액": 1,
+                }
+            }
+        )
+
+
+class NonFiniteDecimalStockApi(FakePykrxStockApi):
+    def get_index_fundamental_by_date(
+        self,
+        fromdate: str,
+        todate: str,
+        ticker: str,
+        prev: bool = True,
+    ) -> FakeDataFrame:
+        return FakeDataFrame({datetime(2024, 1, 2): {"PER": "NaN", "PBR": 0.93}})
+
+
+class UnsupportedDateStockApi(FakePykrxStockApi):
+    def get_index_ohlcv_by_date(
+        self,
+        fromdate: str,
+        todate: str,
+        ticker: str,
+        freq: str = "d",
+        name_display: bool = True,
+    ) -> FakeDataFrame:
+        return FakeDataFrame(
+            {
+                cast(datetime, object()): {
+                    "시가": 1,
+                    "고가": 1,
+                    "저가": 1,
+                    "종가": 1,
+                    "거래량": 1,
+                    "거래대금": 1,
+                    "상장시가총액": 1,
+                }
+            }
+        )
+
+
+class NativeDateStockApi(FakePykrxStockApi):
+    def get_market_trading_value_by_date(
+        self,
+        fromdate: str,
+        todate: str,
+        ticker: str,
+        etf: bool = False,
+        etn: bool = False,
+        elw: bool = False,
+        on: str = "순매수",
+        detail: bool = False,
+        freq: str = "d",
+    ) -> FakeDataFrame:
+        return FakeDataFrame(
+            {
+                datetime(2024, 1, 2).date(): {
+                    "개인": Decimal("1"),
+                    "외국인합계": Decimal("2"),
+                    "기관합계": Decimal("3"),
+                }
+            }
+        )
+
+
+class StringDateStockApi(FakePykrxStockApi):
+    def get_market_trading_value_by_date(
+        self,
+        fromdate: str,
+        todate: str,
+        ticker: str,
+        etf: bool = False,
+        etn: bool = False,
+        elw: bool = False,
+        on: str = "순매수",
+        detail: bool = False,
+        freq: str = "d",
+    ) -> FakeDataFrame:
+        return FakeDataFrame(
+            {
+                "2024-01-02 00:00:00": {
+                    "개인": Decimal("1"),
+                    "외국인합계": Decimal("2"),
+                    "기관합계": Decimal("3"),
+                }
+            }
+        )
+
+
 def test_pykrx_krx_connector_normalizes_dataframes_into_typed_rows() -> None:
     connector = PykrxKrxConnector(
         stock_api=FakePykrxStockApi(),
@@ -265,6 +372,70 @@ def test_pykrx_krx_connector_sleeps_between_chunked_pykrx_calls() -> None:
     assert chunk_ranges[-1][1] == date(2024, 12, 31)
     assert all((chunk_end - chunk_start).days <= 730 for chunk_start, chunk_end in chunk_ranges)
     assert sleep_calls == [1.0, 1.0]
+
+
+def test_pykrx_krx_connector_lazy_loads_pykrx_and_uses_default_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stock_api = FakePykrxStockApi()
+    sleep_calls: list[float] = []
+
+    def fake_import_module(name: str) -> FakePykrxStockApi:
+        assert name == "pykrx.stock"
+        return stock_api
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.connectors.krx.importlib.import_module",
+        fake_import_module,
+    )
+    monkeypatch.setattr("time.sleep", fake_sleep)
+
+    connector = PykrxKrxConnector()
+
+    _ = connector.fetch_kospi_index(date(2020, 1, 1), date(2024, 12, 31))
+
+    assert sleep_calls == [1.0, 1.0]
+    assert len(stock_api.calls) == 3
+
+
+def test_pykrx_krx_connector_rejects_invalid_decimal_values() -> None:
+    connector = PykrxKrxConnector(stock_api=InvalidDecimalStockApi())
+
+    with pytest.raises(ValueError, match="invalid decimal value"):
+        connector.fetch_kospi_index(date(2024, 1, 2), date(2024, 1, 2))
+
+
+def test_pykrx_krx_connector_rejects_non_finite_decimal_values() -> None:
+    connector = PykrxKrxConnector(stock_api=NonFiniteDecimalStockApi())
+
+    with pytest.raises(ValueError, match="non-finite decimal value"):
+        connector.fetch_market_valuation(date(2024, 1, 2), date(2024, 1, 2))
+
+
+def test_pykrx_krx_connector_rejects_unsupported_row_dates() -> None:
+    connector = PykrxKrxConnector(stock_api=UnsupportedDateStockApi())
+
+    with pytest.raises(ValueError, match="unsupported row date value"):
+        connector.fetch_kospi_index(date(2024, 1, 2), date(2024, 1, 2))
+
+
+def test_pykrx_krx_connector_accepts_native_date_index_values() -> None:
+    connector = PykrxKrxConnector(stock_api=NativeDateStockApi())
+
+    rows = connector.fetch_investor_flow(date(2024, 1, 2), date(2024, 1, 2))
+
+    assert rows[0].trade_date == date(2024, 1, 2)
+
+
+def test_pykrx_krx_connector_accepts_string_date_index_values() -> None:
+    connector = PykrxKrxConnector(stock_api=StringDateStockApi())
+
+    rows = connector.fetch_investor_flow(date(2024, 1, 2), date(2024, 1, 2))
+
+    assert rows[0].trade_date == date(2024, 1, 2)
 
 
 @pytest.mark.requires_network

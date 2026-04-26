@@ -144,3 +144,59 @@ def test_run_ingest_command_live_mode_is_idempotent_for_existing_snapshot_partit
     assert (
         tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "2024-01-03.parquet"
     ).is_file()
+
+
+def test_cli_main_live_ingest_writes_snapshot_partition_layout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connector = FakeLiveEcosConnector()
+    registry = FakeLiveRegistry(connector)
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.LiveConnectorRegistry",
+        lambda: registry,
+    )
+
+    exit_code = main(
+        [
+            "ingest",
+            "--live",
+            "--source",
+            "ecos",
+            "--dataset",
+            "base_rate",
+            "--from",
+            "2024-01-02",
+            "--to",
+            "2024-01-03",
+            "--snapshot-id",
+            "snapshot-20240115T000000Z",
+            "--api-key",
+            "cli-key",
+            "--out",
+            str(tmp_path),
+        ]
+    )
+
+    manifest = read_manifest(
+        tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "manifest.json"
+    )
+
+    assert exit_code == 0
+    assert registry.calls == [("ecos", "cli-key")]
+    assert connector.requested_ranges == [
+        (date(2024, 1, 2), date(2024, 1, 2)),
+        (date(2024, 1, 3), date(2024, 1, 3)),
+    ]
+    assert isinstance(manifest, LiveIngestManifest)
+    assert [entry.path.as_posix() for entry in manifest.entries] == [
+        "ecos/base_rate/2024-01-02.parquet",
+        "ecos/base_rate/2024-01-03.parquet",
+    ]
+    assert (
+        tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "2024-01-02.parquet"
+    ).is_file()
+    assert (
+        tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "2024-01-03.parquet"
+    ).is_file()

@@ -60,6 +60,10 @@ testpaths = [
   "core/tests",
   "apps/kr-kospi/tests",
 ]
+markers = [
+  "live: live integration tests gated by environment variables",
+  "requires_network: mark test as requiring live network access and skip by default in CI",
+]
 
 [tool.coverage.run]
 source = [

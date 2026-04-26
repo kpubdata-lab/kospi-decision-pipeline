@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .decision import DecisionAgent, compute_config_signature
 from .domestic_macro import DomesticMacroAgent
 from .flow import AgentFeatureRow, FlowAgent
 from .technical import TechnicalAgent
@@ -10,9 +11,11 @@ from .volatility import VolatilityAgent
 
 __all__ = [
     "AgentFeatureRow",
+    "DecisionAgent",
     "DomesticMacroAgent",
     "FlowAgent",
     "TechnicalAgent",
     "ValuationAgent",
     "VolatilityAgent",
+    "compute_config_signature",
 ]

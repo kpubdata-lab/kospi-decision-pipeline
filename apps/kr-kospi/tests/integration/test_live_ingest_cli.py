@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import os
 from pathlib import Path
+from typing import Protocol, cast
 
+import pyarrow.parquet as pq
 import pytest
 
 from kospi_decision_pipeline_app_kr_kospi.cli import main, run_ingest_command
@@ -14,6 +17,18 @@ from kospi_decision_pipeline_app_kr_kospi.ingest.manifests import LiveIngestMani
 
 
 RUN_TIMESTAMP = datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
+
+
+class _ArrowTable(Protocol):
+    @property
+    def num_rows(self) -> int: ...
+
+
+class _ReadTable(Protocol):
+    def __call__(self, source: Path) -> _ArrowTable: ...
+
+
+READ_TABLE = cast(_ReadTable, getattr(pq, "read_table"))
 
 
 @dataclass(slots=True)
@@ -200,3 +215,28 @@ def test_cli_main_live_ingest_writes_snapshot_partition_layout(
     assert (
         tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "2024-01-03.parquet"
     ).is_file()
+
+
+@pytest.mark.skipif(os.getenv("KOSIS_API_KEY") is None, reason="KOSIS_API_KEY not set")
+def test_run_ingest_command_live_kosis_writes_verified_bronze_partition(tmp_path: Path) -> None:
+    assert (
+        run_ingest_command(
+            source="kosis",
+            dataset="macro_indicators",
+            start="2024-01-01",
+            end="2024-03-31",
+            output_dir=str(tmp_path),
+            live=True,
+            snapshot_id="snapshot-20240301T000000Z",
+            connector_registry=None,
+            deterministic_run_timestamp=RUN_TIMESTAMP,
+        )
+        == 0
+    )
+
+    dataset_root = tmp_path / "snapshot-20240301T000000Z" / "kosis" / "macro_indicators"
+    parquet_paths = sorted(dataset_root.glob("*.parquet"))
+
+    assert parquet_paths
+    first_table = READ_TABLE(parquet_paths[0])
+    assert first_table.num_rows > 0

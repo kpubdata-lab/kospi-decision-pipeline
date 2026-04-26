@@ -10,7 +10,7 @@ from typing import Protocol, cast
 import yaml
 
 from kospi_decision_pipeline_core.backtest import BacktestRunner, WalkForwardSplitter
-from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario
+from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario, run_kospi_snapshot
 
 from .connectors.registry import LiveConnectorRegistry
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry
@@ -154,6 +154,20 @@ def run_scenario_command(
     return 0
 
 
+def run_command(
+    *,
+    scenario: str,
+    features: str,
+    output_dir: str,
+) -> int:
+    _ = run_kospi_snapshot(
+        Path(scenario),
+        Path(features) if features != "" else None,
+        Path(output_dir) if output_dir != "" else None,
+    )
+    return 0
+
+
 def run_backtest_command(
     *,
     dataset: str,
@@ -266,7 +280,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ = run_backtest_parser.add_argument("--out", dest="output_dir", required=True)
     _ = run_backtest_parser.add_argument("--folds-config", default="")
-    for name in ("run", "backtest", "report"):
+    run_parser = sub.add_parser("run", help="run decisions over a Gold snapshot")
+    _ = run_parser.add_argument(
+        "--scenario",
+        default="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+    )
+    _ = run_parser.add_argument("--features", default="")
+    _ = run_parser.add_argument("--out", dest="output_dir", default="")
+    for name in ("backtest", "report"):
         _ = sub.add_parser(name, help=f"{name} (not yet implemented)")
     args = parser.parse_args(argv, namespace=_CliArgs())
     cmd = args.cmd
@@ -307,6 +328,12 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "run-scenario":
         return run_scenario_command(
             decision_date=str(args.decision_date),
+            scenario=str(args.scenario),
+            features=str(args.features),
+            output_dir=str(args.output_dir),
+        )
+    if cmd == "run":
+        return run_command(
             scenario=str(args.scenario),
             features=str(args.features),
             output_dir=str(args.output_dir),

@@ -14,6 +14,16 @@ from kospi_decision_pipeline_core.runtime import service as service_module
 from kospi_decision_pipeline_core.schemas import DecisionResult
 from kospi_decision_pipeline_core.schemas.serialization import parse_decision_result
 
+_RESOLVE_PATH = cast("_ResolvePath", getattr(service_module, "_resolve_path"))
+_WORKSPACE_ROOT = cast("_WorkspaceRoot", getattr(service_module, "_workspace_root"))
+_MATCHING_ROWS = cast("_MatchingRows", getattr(service_module, "_matching_rows"))
+_PREVIOUS_TRADING_DAY = cast("_TradingDayHelper", getattr(service_module, "_previous_trading_day"))
+_ASSERT_LAG_SAFE_ROW = cast("_AssertLagSafeRow", getattr(service_module, "_assert_lag_safe_row"))
+_RESOLVE_SNAPSHOT_ID = cast("_ResolveSnapshotId", getattr(service_module, "_resolve_snapshot_id"))
+_PERSIST_DECISION_RESULT = cast(
+    "_PersistDecisionResult", getattr(service_module, "_persist_decision_result")
+)
+
 
 class _ArrowTable(Protocol):
     def to_pylist(self) -> list[dict[str, object]]: ...
@@ -25,6 +35,38 @@ class _ArrowTableFactory(Protocol):
 
 class _WriteTable(Protocol):
     def __call__(self, table: _ArrowTable, where: Path, *, compression: str) -> None: ...
+
+
+class _ResolvePath(Protocol):
+    def __call__(
+        self, base_path: Path, configured_path: str, override_path: Path | None
+    ) -> Path: ...
+
+
+class _WorkspaceRoot(Protocol):
+    def __call__(self, base_path: Path) -> Path: ...
+
+
+class _MatchingRows(Protocol):
+    def __call__(
+        self, rows: list[dict[str, object]], decision_date: date
+    ) -> list[dict[str, object]]: ...
+
+
+class _TradingDayHelper(Protocol):
+    def __call__(self, value: date) -> date: ...
+
+
+class _AssertLagSafeRow(Protocol):
+    def __call__(self, row: dict[str, object], decision_date: date) -> None: ...
+
+
+class _ResolveSnapshotId(Protocol):
+    def __call__(self, row: dict[str, object]) -> str: ...
+
+
+class _PersistDecisionResult(Protocol):
+    def __call__(self, result: DecisionResult, output_dir: Path, scenario_id: str) -> None: ...
 
 
 WRITE_TABLE = cast(_WriteTable, getattr(pq, "write_table"))
@@ -221,44 +263,45 @@ def test_service_helper_paths_and_feature_filters(tmp_path: Path) -> None:
     _ = scenario_path.write_text("scenario_id: demo\n", encoding="utf-8")
 
     assert (
-        service_module._resolve_path(scenario_path, "data/gold/features.parquet", None)
+        _RESOLVE_PATH(scenario_path, "data/gold/features.parquet", None)
         == project_root / "data/gold/features.parquet"
     )
-    assert service_module._workspace_root(scenario_path) == project_root
-    assert service_module._matching_rows(
+    assert _WORKSPACE_ROOT(scenario_path) == project_root
+    assert _MATCHING_ROWS(
         [{"decision_date": date(2025, 2, 14), "value": 1.0}],
         date(2025, 2, 14),
     ) == [{"decision_date": date(2025, 2, 14), "value": 1.0}]
-    assert service_module._previous_trading_day(date(2025, 2, 17)) == date(2025, 2, 14)
+    assert _PREVIOUS_TRADING_DAY(date(2025, 2, 17)) == date(2025, 2, 14)
     assert (
-        service_module._resolve_path(
+        _RESOLVE_PATH(
             scenario_path,
             "data/gold/features.parquet",
             project_root / "override.parquet",
         )
         == project_root / "override.parquet"
     )
-    assert service_module._resolve_snapshot_id({"value": 1.0}).startswith("gold:")
+    assert _RESOLVE_SNAPSHOT_ID({"value": 1.0}).startswith("gold:")
 
 
 def test_service_helper_fallback_root_and_snapshot_without_date(tmp_path: Path) -> None:
     scenario_path = tmp_path / "scenario.yaml"
     _ = scenario_path.write_text("scenario_id: demo\n", encoding="utf-8")
 
-    assert service_module._workspace_root(scenario_path) == tmp_path
-    assert service_module._resolve_snapshot_id({"other": object()}).startswith("gold:")
+    assert _WORKSPACE_ROOT(scenario_path) == tmp_path
+    assert _RESOLVE_SNAPSHOT_ID({"other": object()}).startswith("gold:")
 
 
 def test_service_helper_validates_alignment_and_persistence_branches(tmp_path: Path) -> None:
-    service_module._assert_lag_safe_row({"decision_date": date(2025, 2, 14)}, date(2025, 2, 14))
+    with pytest.raises(ValueError, match="provenance as_of_date or trade_date"):
+        _ASSERT_LAG_SAFE_ROW({"decision_date": date(2025, 2, 14)}, date(2025, 2, 14))
 
-    with pytest.raises(ValueError, match="valid as_of_date"):
-        service_module._assert_lag_safe_row({"as_of_date": "2025-02-13"}, date(2025, 2, 14))
+    with pytest.raises(ValueError, match="provenance as_of_date or trade_date"):
+        _ASSERT_LAG_SAFE_ROW({"as_of_date": "2025-02-13"}, date(2025, 2, 14))
 
     with pytest.raises(ValueError, match="strictly earlier than decision_date"):
-        service_module._assert_lag_safe_row({"as_of_date": date(2025, 2, 14)}, date(2025, 2, 14))
+        _ASSERT_LAG_SAFE_ROW({"as_of_date": date(2025, 2, 14)}, date(2025, 2, 14))
 
-    snapshot_id = service_module._resolve_snapshot_id({"snapshot_id": "explicit-snapshot"})
+    snapshot_id = _RESOLVE_SNAPSHOT_ID({"snapshot_id": "explicit-snapshot"})
     assert snapshot_id == "explicit-snapshot"
 
     result = DecisionResult(
@@ -271,7 +314,7 @@ def test_service_helper_validates_alignment_and_persistence_branches(tmp_path: P
         config_signature="config-signature",
         snapshot_id="snapshot-id",
     )
-    service_module._persist_decision_result(result, tmp_path / "out", "kospi.next_day")
+    _PERSIST_DECISION_RESULT(result, tmp_path / "out", "kospi.next_day")
     assert (
         parse_decision_result(
             (tmp_path / "out" / "kospi.next_day" / "2025-02-14.jsonl")

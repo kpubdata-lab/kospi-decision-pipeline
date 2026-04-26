@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -19,13 +19,19 @@ from kospi_decision_pipeline_core.agents import (
     VolatilityAgent,
     compute_config_signature,
 )
+from kospi_decision_pipeline_core.calendar import TradingCalendar
 from kospi_decision_pipeline_core.features.leakage_guard import (
     LeakageError,
     assert_join_not_from_future,
     assert_no_forbidden_columns,
 )
 from kospi_decision_pipeline_core.schemas import DecisionResult
-from kospi_decision_pipeline_core.schemas.config import load_agents_config, load_scenario_config
+from kospi_decision_pipeline_core.schemas.config import (
+    AgentsConfig,
+    ScenarioConfig,
+    load_agents_config,
+    load_scenario_config,
+)
 from kospi_decision_pipeline_core.schemas.serialization import to_jsonl_line
 
 from .adapters import (
@@ -57,6 +63,59 @@ def run_kospi_scenario(
     features_path: Path | None = None,
     output_dir: Path | None = None,
 ) -> DecisionResult:
+    (
+        _,
+        scenario_config,
+        resolved_agents_path,
+        resolved_features_path,
+        resolved_output_dir,
+    ) = _load_runtime_paths(scenario_path, features_path, output_dir)
+    agents_config = load_agents_config(resolved_agents_path)
+    features_row = _load_features_row(resolved_features_path, decision_date)
+    result = _run_decision_row(
+        scenario_id=scenario_config.scenario_id,
+        decision_date=decision_date,
+        features_row=features_row,
+        storage_key=str(resolved_features_path),
+        agents_config_path=resolved_agents_path,
+        agents_config=agents_config,
+    )
+    _persist_decision_result(result, resolved_output_dir, scenario_config.scenario_id)
+    return result
+
+
+def run_kospi_snapshot(
+    scenario_path: Path | str,
+    features_path: Path | None = None,
+    output_dir: Path | None = None,
+) -> tuple[DecisionResult, ...]:
+    _, scenario_config, resolved_agents_path, resolved_features_path, resolved_output_dir = (
+        _load_runtime_paths(scenario_path, features_path, output_dir)
+    )
+    agents_config = load_agents_config(resolved_agents_path)
+    runtime_rows = _load_runtime_rows(resolved_features_path)
+    if len(runtime_rows) == 0:
+        raise ValueError("features snapshot produced no runnable decision rows")
+    results: list[DecisionResult] = []
+    for decision_date, features_row in runtime_rows:
+        result = _run_decision_row(
+            scenario_id=scenario_config.scenario_id,
+            decision_date=decision_date,
+            features_row=features_row,
+            storage_key=str(resolved_features_path),
+            agents_config_path=resolved_agents_path,
+            agents_config=agents_config,
+        )
+        _persist_decision_result(result, resolved_output_dir, scenario_config.scenario_id)
+        results.append(result)
+    return tuple(results)
+
+
+def _load_runtime_paths(
+    scenario_path: Path | str,
+    features_path: Path | None,
+    output_dir: Path | None,
+) -> tuple[Path, ScenarioConfig, Path, Path, Path]:
     scenario_config_path = Path(scenario_path)
     scenario_config = load_scenario_config(scenario_config_path)
     runtime = scenario_config.runtime
@@ -75,18 +134,52 @@ def run_kospi_scenario(
         runtime.output_dir,
         override_path=output_dir,
     )
-    agents_config = load_agents_config(resolved_agents_path)
-    features_row = _load_features_row(resolved_features_path, decision_date)
-    snapshot_id = _resolve_snapshot_id(features_row)
+    return (
+        scenario_config_path,
+        scenario_config,
+        resolved_agents_path,
+        resolved_features_path,
+        resolved_output_dir,
+    )
 
+
+def _run_decision_row(
+    *,
+    scenario_id: str,
+    decision_date: date,
+    features_row: dict[str, object],
+    storage_key: str,
+    agents_config_path: Path,
+    agents_config: AgentsConfig,
+) -> DecisionResult:
+    snapshot_id = _resolve_snapshot_id(features_row)
     scenario = KospiNextDayScenario(
-        scenario_id=scenario_config.scenario_id,
+        scenario_id=scenario_id,
         decision_date=decision_date,
         snapshot_id=snapshot_id,
         features_row=features_row,
-        storage_key=str(resolved_features_path),
+        storage_key=storage_key,
     )
-    agents = cast(
+    runner = ScenarioRunner(
+        agents=_build_agents(agents_config_path, agents_config),
+        resolver=cast(
+            ActionResolver[KospiDecisionSegment, KospiDecisionParticipant, KospiActionProposal],
+            KospiScenarioResolver(),
+        ),
+        max_steps=2,
+    )
+    run = runner.run(scenario)
+    final_segment = run.final_state.segments[0]
+    if final_segment.decision_result is None:
+        raise ValueError("scenario did not produce a final decision result")
+    return final_segment.decision_result
+
+
+def _build_agents(
+    agents_config_path: Path,
+    agents_config: AgentsConfig,
+) -> tuple[Agent[KospiDecisionSegment, KospiDecisionParticipant, KospiActionProposal], ...]:
+    return cast(
         tuple[Agent[KospiDecisionSegment, KospiDecisionParticipant, KospiActionProposal], ...],
         (
             TechnicalAgentAdapter(
@@ -123,28 +216,11 @@ def run_kospi_scenario(
                 agent=DecisionAgent(
                     threshold_up=agents_config.thresholds.up,
                     threshold_down=agents_config.thresholds.down,
-                    config_signature=compute_config_signature(resolved_agents_path),
+                    config_signature=compute_config_signature(agents_config_path),
                 )
             ),
         ),
     )
-    resolver = cast(
-        ActionResolver[KospiDecisionSegment, KospiDecisionParticipant, KospiActionProposal],
-        KospiScenarioResolver(),
-    )
-    runner = ScenarioRunner(
-        agents=agents,
-        resolver=resolver,
-        max_steps=2,
-    )
-    run = runner.run(scenario)
-    final_segment = run.final_state.segments[0]
-    if final_segment.decision_result is None:
-        raise ValueError("scenario did not produce a final decision result")
-    _persist_decision_result(
-        final_segment.decision_result, resolved_output_dir, scenario_config.scenario_id
-    )
-    return final_segment.decision_result
 
 
 def _resolve_path(base_path: Path, configured_path: str, override_path: Path | None) -> Path:
@@ -175,6 +251,22 @@ def _load_features_row(features_path: Path, decision_date: date) -> dict[str, ob
     return row
 
 
+def _load_runtime_rows(features_path: Path) -> tuple[tuple[date, dict[str, object]], ...]:
+    rows = READ_TABLE(features_path).to_pylist()
+    runtime_rows: list[tuple[date, dict[str, object]]] = []
+    seen_decision_dates: set[date] = set()
+    for raw_row in rows:
+        row = dict(raw_row)
+        decision_date = _runtime_decision_date(row)
+        _assert_lag_safe_row(row, decision_date)
+        assert_no_forbidden_columns(row.keys())
+        if decision_date in seen_decision_dates:
+            raise ValueError("expected unique decision_date values in runtime features")
+        seen_decision_dates.add(decision_date)
+        runtime_rows.append((decision_date, row))
+    return tuple(sorted(runtime_rows, key=lambda item: item[0]))
+
+
 def _matching_rows(rows: list[dict[str, object]], decision_date: date) -> list[dict[str, object]]:
     if rows and all("decision_date" in row for row in rows):
         return [row for row in rows if row.get("decision_date") == decision_date]
@@ -183,20 +275,36 @@ def _matching_rows(rows: list[dict[str, object]], decision_date: date) -> list[d
 
 
 def _assert_lag_safe_row(row: dict[str, object], decision_date: date) -> None:
-    if "as_of_date" in row or "trade_date" in row:
-        joined_as_of = row.get("as_of_date", row.get("trade_date"))
-        if not isinstance(joined_as_of, date):
-            raise LeakageError("features row must include a valid as_of_date")
-        assert_join_not_from_future(joined_as_of=joined_as_of, decision_date=decision_date)
-        if joined_as_of >= decision_date:
-            raise LeakageError("features row must be strictly earlier than decision_date")
+    joined_as_of = row.get("as_of_date", row.get("trade_date"))
+    if not isinstance(joined_as_of, date):
+        raise LeakageError("features row must include provenance as_of_date or trade_date")
+    assert_join_not_from_future(joined_as_of=joined_as_of, decision_date=decision_date)
+    if joined_as_of >= decision_date:
+        raise LeakageError("features row must be strictly earlier than decision_date")
 
 
 def _previous_trading_day(decision_date: date) -> date:
-    current = decision_date - timedelta(days=1)
-    while current.weekday() >= 5:
-        current -= timedelta(days=1)
-    return current
+    return TradingCalendar().previous_trading_day(decision_date)
+
+
+def _runtime_decision_date(row: dict[str, object]) -> date:
+    raw_decision_date = row.get("decision_date")
+    joined_as_of = row.get("as_of_date", row.get("trade_date"))
+    if raw_decision_date is not None:
+        if not isinstance(raw_decision_date, date):
+            raise ValueError("decision_date must be a date")
+        if not isinstance(joined_as_of, date):
+            raise ValueError(
+                "runtime features row must include provenance as_of_date or trade_date"
+            )
+        return raw_decision_date
+    if not isinstance(joined_as_of, date):
+        raise ValueError("runtime features row must include as_of_date or decision_date")
+    return _next_weekday(joined_as_of)
+
+
+def _next_weekday(current_date: date) -> date:
+    return TradingCalendar().next_trading_day(current_date)
 
 
 def _resolve_snapshot_id(row: dict[str, object]) -> str:
@@ -217,4 +325,4 @@ def _persist_decision_result(result: DecisionResult, output_dir: Path, scenario_
     _ = output_path.write_text(to_jsonl_line(result) + "\n", encoding="utf-8")
 
 
-__all__ = ["run_kospi_scenario"]
+__all__ = ["run_kospi_scenario", "run_kospi_snapshot"]

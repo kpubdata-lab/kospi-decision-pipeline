@@ -1,5 +1,114 @@
 # KOSPI Decision Pipeline Specification
 
+## §1. Purpose
+
+This specification defines the binding v0.1 contract for a public-data-first, deterministic KOSPI next-day direction pipeline built on ABDP. It is the normative reference for repository scope, schemas, rule logic, runtime orchestration, and release documentation.
+
+## §2. Intended use
+
+The project is for research, education, auditability, and reproducible experimentation. It is not a production trading system.
+
+## §3. Output domain
+
+- Model outputs: `up | down | skip`
+- Backtest-only ground truth: `up | down | flat`
+
+## §4. Data principle
+
+v0.1 is public-data-first and Korea-focused. All shipped pipelines are built around public Korean data sources and deterministic transformations.
+
+## §5. System summary
+
+The system has two planes:
+
+1. Data plane: Bronze → Silver → Gold parquet datasets
+2. Decision plane: five rule agents + one DecisionAgent executed through ABDP `ScenarioRunner`
+
+## §6. Supported public data sources
+
+- KRX
+- ECOS (Bank of Korea)
+- KOSIS (Statistics Korea) connector surface for future or upstream expansion
+- Public Data Portal connectors declared in code, where applicable
+
+## §7. Repository topology
+
+- `core/`: shared schemas, config loaders, runtime, backtest, serialization
+- `apps/kr-kospi/`: KOSPI application package, CLI, transforms, fixtures, app tests
+- `docs/`: ADRs and normative spec
+
+## §8. Runtime baseline
+
+- Python `>=3.12`
+- `uv` is the preferred local dependency manager
+- Repository package version at v0.1 release cut remains `0.0.1`
+
+## §9. Determinism and reproducibility
+
+- Parquet artifacts are the system-of-record interfaces between stages.
+- Rule outputs are fixed-label, fixed-score branches.
+- Decision outputs persist config signatures and snapshot identifiers.
+- Runtime and backtest flows must be repeatable from the same inputs.
+
+## §10. Explicit v0.1 exclusions
+
+The following are out of scope for v0.1:
+
+- S&P 500
+- Nasdaq
+- Dow
+- VIX
+- US futures
+- real-time FX
+- news sentiment
+- broker reports
+- individual stocks
+- production trading automation
+
+## §11. Bronze ingest contract
+
+Bronze ingestion writes raw source snapshots to parquet under a source and dataset keyed directory structure. The shipped CLI surface for Bronze is `kospi-pipeline ingest`.
+
+## §12. Silver normalization contract
+
+Silver datasets are typed, normalized, source-aware parquet outputs derived from Bronze. Silver is the canonical typed staging layer used by Gold builders.
+
+## §13. Gold feature contract
+
+The shipped Gold feature builder writes `data/gold/decision_features.parquet`. Gold features must not contain `target_*` or `future_*` columns and must remain safe for direct agent scoring.
+
+## §14. Leakage guardrails
+
+- No agent may read `target_*` or `future_*` columns.
+- No future-incorporating joins are allowed.
+- Runtime feature rows must be strictly earlier than the decision date.
+- Full-period normalization and hidden future leakage are forbidden.
+
+## §15. Config contract
+
+Scenario runtime config and agent config are YAML-driven and validated by strict loaders. Unknown agent IDs, mismatched rule versions, and missing threshold keys must raise validation errors.
+
+## §16. Decision schema contract
+
+Decision runtime outputs must preserve typed votes, final decision labels, aggregate score, snapshot identity, and config signature. Frozen decision schemas and deterministic serializers are part of the v0.1 contract.
+
+## §17. Serialization and artifact contract
+
+- Scenario decisions persist as JSONL under `data/decisions/<scenario_id>/<decision_date>.jsonl`
+- Backtests persist `rows.jsonl`, `metrics.json`, and `metrics.csv`
+- JSON serialization is deterministic and explicit
+
+## §18. CLI surface contract
+
+The shipped CLI currently implements:
+
+- `ingest`
+- `build-features`
+- `run-scenario`
+- `run-backtest`
+
+`build_backtest_dataset(...)` is shipped as a Python API in `transforms.target_labels`, but a dedicated `build-backtest-dataset` CLI subcommand is not yet exposed in `cli.py` as of v0.1 release documentation finalization.
+
 ## §19-§23 Common execution contract
 
 The following rules are binding for `technical@1.0.0`, `domestic_macro@1.0.0`, `flow@1.0.0`, `valuation@1.0.0`, and `volatility@1.0.0`.
@@ -91,7 +200,7 @@ The following rules are binding for `technical@1.0.0`, `domestic_macro@1.0.0`, `
 | T3 | 0.007 | -0.008 | 0.001 | 0.55 | Mixed momentum abstain | skip | 0.0 |
 | T4 | 0.002 | 0.006 | 0.002 | 0.54 | Fallback | skip | 0.0 |
 
----
+
 
 ## §20. DomesticMacroAgent
 
@@ -422,7 +531,7 @@ This label is for backtest/evaluation only. Agents MUST NOT read it.
 
 ### §24.2 Target column names
 
-The following are the only target columns for v1.0.0, and all MUST use the `target_` prefix:
+The following are the only target columns for v0.1, and all MUST use the `target_` prefix:
 
 - `target_next_day_simple_return`
 - `target_next_day_log_return`
@@ -437,7 +546,7 @@ Rules:
 
 ### §24.3 Walk-forward split
 
-Walk-forward mode is fixed to **expanding-window** for v1.0.0. Rolling-window mode is out of scope.
+Walk-forward mode is fixed to **expanding-window** for v0.1. Rolling-window mode is out of scope.
 
 Binding defaults:
 
@@ -595,3 +704,190 @@ agents:
 ```
 
 ---
+
+## §25. DecisionAgent aggregation contract
+
+DecisionAgent consumes exactly five rule-agent votes and aggregates them with configured weights from `agents.yaml`.
+
+Binding rules:
+
+- input agent set must be `technical`, `domestic_macro`, `flow`, `valuation`, `volatility`
+- aggregate thresholds come from `thresholds.up` and `thresholds.down`
+- output labels remain `up | down | skip`
+- config signature must be persisted on the final decision result
+
+## §26. Scenario configuration contract
+
+The shipped scenario config declares:
+
+- `scenario_id: kospi.next_day`
+- `horizon: next_day`
+- six agents in order: five rule agents plus `decision`
+- runtime block with `agents_config_path`, `features_path`, and `output_dir`
+
+## §27. Scenario execution lifecycle
+
+ABDP runtime proceeds in two phases:
+
+1. `vote`: exactly five unique `VoteProposal` values from rule agents
+2. `decide`: exactly one `DecisionResultProposal` from DecisionAgent
+
+Any other proposal shape or count is invalid and must raise.
+
+## §28. Runtime service outputs
+
+`run_kospi_scenario(...)` must:
+
+1. load scenario config
+2. resolve agent config and feature paths
+3. load exactly one lag-safe feature row for the requested decision date
+4. run ABDP `ScenarioRunner`
+5. persist one JSONL decision artifact under `data/decisions/<scenario_id>/<decision_date>.jsonl` or the supplied output override
+
+Documented v0.1 drift:
+
+- committed `scenario.kospi.next_day.yaml` points `runtime.features_path` to `data/gold/features.parquet`
+- shipped Gold builder writes `data/gold/decision_features.parquet`
+- release docs must therefore instruct users to pass `--features data/gold/decision_features.parquet` explicitly unless they customize the YAML locally
+
+## §29. Backtest reporting contract
+
+Backtest output files are:
+
+- `rows.jsonl`
+- `metrics.json`
+- `metrics.csv`
+
+Metrics include fold-level and overall statistics such as hit rate, precision, recall, skip rate, and flat rate.
+
+## §30. Quality gate contract
+
+- CI runs tests, Ruff lint/format checks, typing policy, and mypy
+- new code is expected to maintain 100% line and branch coverage
+- doc-only changes do not need coverage expansion
+
+## §31. ADR linkage
+
+ADR-001 is the architectural foundation for this specification. If an implementation choice conflicts with ADR-001, ADR-001 and this spec govern until superseded by a later accepted ADR and spec revision.
+
+## §32. Versioning policy
+
+- repository package version is currently `0.0.1`
+- release documentation is prepared for the v0.1 milestone
+- rule versions are explicitly pinned, e.g. `technical@1.0.0`
+
+## §33. Public data attribution contract
+
+Release documentation must attribute KRX and ECOS as the primary shipped v0.1 decision inputs, while also acknowledging KOSIS as a supported public-data connector surface in the broader repository.
+
+## §34. Secrets and live access boundary
+
+Live ingestion may require API credentials, but secrets must never be committed to the repository. Documentation may reference the need for credentials without embedding them.
+
+## §35. Scale boundary
+
+v0.1 is optimized for deterministic research workflows, not for high-throughput low-latency production deployment.
+
+## §36. Artifact traceability
+
+Generated outputs should remain traceable by path, date, scenario ID, snapshot ID, and config signature wherever those concepts apply.
+
+## §37. Compatibility statement
+
+The release contract is defined against the current mainline implementation that merged issues #1 through #19.
+
+## §38. Packaging statement
+
+The project is packaged from a single top-level `pyproject.toml` that includes both the shared core package and the `apps/kr-kospi` app package. There are no separate workspace `pyproject.toml` files under `core/` or `apps/kr-kospi/` in the shipped repository.
+
+## §39. Testing strategy
+
+The repository uses unit, contract, and integration tests to protect schemas, transforms, runtime behavior, and backtest determinism.
+
+## §40. Terminology
+
+- Bronze: raw source snapshot layer
+- Silver: typed normalized dataset layer
+- Gold: final lag-safe decision feature layer
+- Scenario run: one next-day ABDP decision execution
+- Backtest row: one scored decision paired with ground truth
+
+## §41. Documentation obligations
+
+Release documentation must be explicit about scope, exclusions, disclaimers, CLI surface, and any known drift between configuration defaults and generated artifacts.
+
+## §42. Research-use statement
+
+All release-facing docs must describe the repository as research-grade and educational, not production-ready.
+
+## §43. Public-data limitations
+
+v0.1 intentionally favors auditability and narrow scope over predictive breadth. Missing non-public, real-time, and cross-market features are a deliberate design constraint, not an omission.
+
+## §44. Extension boundary
+
+Future releases may add new markets, signals, or deployment surfaces, but such changes are non-binding for v0.1 unless explicitly versioned in this specification.
+
+## §45. ABDP dependency attribution
+
+ABDP integration is a first-class architectural dependency. Release documentation must reference <https://github.com/yeongseon/agent-based-decision-pipeline> at pinned SHA `9520cfed7e150f644fb5d01bb1a9b32eb0082f8d`.
+
+## §46. License
+
+The repository is licensed under Apache-2.0 and release documentation must link to `LICENSE`.
+
+## §47. Disclaimer
+
+> 본 프로젝트는 연구 및 교육 목적의 실험 도구이며, 투자 권유 또는 금융 자문이 아닙니다.
+>
+> This project is an experimental tool for research and education only. It is not investment advice or financial advisory.
+
+This disclaimer must appear prominently in release-facing documentation.
+
+## §48. v0.1 implementation status
+
+The table below maps major spec areas to the shipped issue and PR set merged before documentation finalization.
+
+| Spec area | Summary | Issue / PR |
+| --- | --- | --- |
+| §1-§10 | foundation, scope, exclusions | #1 / PR #21, #2 / PR #22 |
+| §11 | Bronze ingest | #6 / PR #26 |
+| §12 | Silver normalization | #7 / PR #27 |
+| §13-§14 | Gold features and leakage guardrails | #8 / PR #29, #9 / PR #30 |
+| §15 | typed config loading | #4 / PR #25 |
+| §16-§17 | frozen schemas and deterministic serialization | #10 / PR #28 |
+| §18 | CLI surface | #6 / PR #26, #19 / PR #40, issue #20 release audit |
+| §19-§23 | rule-agent contracts | #11 / PR #33, #12 / PR #37, #13 / PR #35, #14 / PR #34, #15 / PR #32 |
+| §24 | targets and walk-forward dataset | #18 / PR #36 |
+| §25 | DecisionAgent aggregation | #16 / PR #38 |
+| §26-§28 | ABDP runtime integration and scenario service | #17 / PR #39 |
+| §29 | backtest reports | #19 / PR #40 |
+| §30 | CI and policy gates | #3 / PR #23 |
+| §31 | ADR linkage | #1 / PR #21 |
+| §33 | public data connectors | #5 / PR #24 |
+| §47-§50 | release documentation finalization | #20 |
+
+## §49. Known limitations and documented drift
+
+- No dedicated `build-backtest-dataset` CLI subcommand is exposed yet, even though the transform implementation exists.
+- The committed scenario YAML defaults `runtime.features_path` to `data/gold/features.parquet`, while the shipped Gold feature builder writes `data/gold/decision_features.parquet`.
+- v0.1 remains Korea-only, next-day-only, and rule-based.
+- v0.1 is not production-ready and should not be presented as such.
+
+## §50. Release notes, version log, and v0.2 roadmap
+
+### v0.1 release notes
+
+v0.1 completes the initial milestone: foundation, public-data ingest, typed normalization, Gold features, leakage guardrails, five rule agents, weighted decision aggregation, ABDP runtime execution, walk-forward backtesting, and release-grade documentation.
+
+### Version log
+
+- `0.0.1`: initial packaged repository line used throughout the v0.1 buildout
+- `v0.1` milestone: documentation-complete release state after issues #1-#20
+
+### v0.2 roadmap
+
+- expose backtest-dataset generation as a first-class CLI subcommand
+- reconcile default scenario feature paths with generated Gold artifact names
+- add richer release automation and artifact publishing
+- evaluate carefully scoped extensions without violating the public-data-first and anti-leakage principles

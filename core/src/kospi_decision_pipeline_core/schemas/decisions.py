@@ -99,40 +99,6 @@ class DecisionResult:
 
 
 @dataclass(frozen=True, slots=True)
-class BacktestRow:
-    decision_date: date
-    label: ModelLabel
-    aggregate_score: float
-    ground_truth: GroundTruthLabel
-    next_day_return: float
-    hit: bool
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "decision_date",
-            _ensure_date(self.decision_date, context="decision_date"),
-        )
-        object.__setattr__(self, "label", _ensure_model_label(self.label, context="label"))
-        object.__setattr__(
-            self,
-            "aggregate_score",
-            _ensure_float(self.aggregate_score, context="aggregate_score"),
-        )
-        object.__setattr__(
-            self,
-            "ground_truth",
-            _ensure_ground_truth_label(self.ground_truth, context="ground_truth"),
-        )
-        object.__setattr__(
-            self,
-            "next_day_return",
-            _ensure_float(self.next_day_return, context="next_day_return"),
-        )
-        object.__setattr__(self, "hit", _ensure_bool(self.hit, context="hit"))
-
-
-@dataclass(frozen=True, slots=True)
 class DecisionRecord:
     pass
 
@@ -155,22 +121,10 @@ def _ensure_date(value: object, *, context: str) -> date:
     return value
 
 
-def _ensure_bool(value: object, *, context: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{context} must be a bool")
-    return value
-
-
 def _ensure_model_label(value: object, *, context: str) -> ModelLabel:
     if not isinstance(value, str) or value not in _MODEL_LABELS:
         raise ValueError(f"{context} must be one of: down, skip, up")
     return cast(ModelLabel, value)
-
-
-def _ensure_ground_truth_label(value: object, *, context: str) -> GroundTruthLabel:
-    if not isinstance(value, str) or value not in _GROUND_TRUTH_LABELS:
-        raise ValueError(f"{context} must be one of: down, flat, up")
-    return cast(GroundTruthLabel, value)
 
 
 def _ensure_tuple_of(

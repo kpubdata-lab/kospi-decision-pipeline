@@ -5,9 +5,9 @@ from collections.abc import Mapping
 from datetime import date
 from typing import cast, overload
 
+from .backtest import BacktestRow
 from .decisions import (
     AgentVote,
-    BacktestRow,
     DecisionResult,
     EvidenceItem,
     GroundTruthLabel,
@@ -15,12 +15,14 @@ from .decisions import (
 )
 
 BACKTEST_CSV_FIELDS: tuple[str, ...] = (
+    "fold_id",
     "decision_date",
     "label",
     "aggregate_score",
-    "ground_truth",
-    "next_day_return",
-    "hit",
+    "target_label",
+    "correct",
+    "snapshot_id",
+    "config_signature",
 )
 
 
@@ -59,7 +61,7 @@ def to_jsonl_line(obj: EvidenceItem | AgentVote | DecisionResult | BacktestRow) 
     return json.dumps(_to_json_value(obj), separators=(",", ":"), ensure_ascii=False)
 
 
-def to_csv_row(obj: BacktestRow, fields: tuple[str, ...]) -> dict[str, str]:
+def to_csv_row(obj: object, fields: tuple[str, ...]) -> dict[str, str]:
     if not isinstance(obj, BacktestRow):
         raise ValueError("to_csv_row supports only flat BacktestRow values")
     if fields != BACKTEST_CSV_FIELDS:
@@ -109,12 +111,14 @@ def parse_decision_result(line: str) -> DecisionResult:
 def parse_backtest_row(line: str) -> BacktestRow:
     payload = _parse_json_object(line)
     return BacktestRow(
+        fold_id=_require_int(payload, "fold_id"),
         decision_date=_require_date(payload, "decision_date"),
         label=_require_model_label(payload, "label"),
         aggregate_score=_require_float(payload, "aggregate_score"),
-        ground_truth=_require_ground_truth_label(payload, "ground_truth"),
-        next_day_return=_require_float(payload, "next_day_return"),
-        hit=_require_bool(payload, "hit"),
+        target_label=_require_ground_truth_label(payload, "target_label"),
+        correct=_require_bool(payload, "correct"),
+        snapshot_id=_require_string(payload, "snapshot_id"),
+        config_signature=_require_string(payload, "config_signature"),
     )
 
 
@@ -150,12 +154,14 @@ def _to_json_value(
             "snapshot_id": obj.snapshot_id,
         }
     return {
+        "fold_id": obj.fold_id,
         "decision_date": obj.decision_date.isoformat(),
         "label": obj.label,
         "aggregate_score": obj.aggregate_score,
-        "ground_truth": obj.ground_truth,
-        "next_day_return": obj.next_day_return,
-        "hit": obj.hit,
+        "target_label": obj.target_label,
+        "correct": obj.correct,
+        "snapshot_id": obj.snapshot_id,
+        "config_signature": obj.config_signature,
     }
 
 
@@ -195,6 +201,13 @@ def _require_bool(payload: Mapping[str, object], key: str) -> bool:
     return value
 
 
+def _require_int(payload: Mapping[str, object], key: str) -> int:
+    value = _require_value(payload, key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an int")
+    return value
+
+
 def _require_date(payload: Mapping[str, object], key: str) -> date:
     value = _require_string(payload, key)
     try:
@@ -229,14 +242,18 @@ def _dump_json(value: object) -> str:
 
 
 def _backtest_field_string(row: BacktestRow, field: str) -> str:
+    if field == "fold_id":
+        return str(row.fold_id)
     if field == "decision_date":
         return row.decision_date.isoformat()
     if field == "label":
         return row.label
     if field == "aggregate_score":
         return str(row.aggregate_score)
-    if field == "ground_truth":
-        return row.ground_truth
-    if field == "next_day_return":
-        return str(row.next_day_return)
-    return "true" if row.hit else "false"
+    if field == "target_label":
+        return row.target_label
+    if field == "correct":
+        return "true" if row.correct else "false"
+    if field == "snapshot_id":
+        return row.snapshot_id
+    return row.config_signature

@@ -6,9 +6,9 @@ from typing import cast
 
 import pytest
 
+from kospi_decision_pipeline_core.schemas.backtest import BacktestRow
 from kospi_decision_pipeline_core.schemas.decisions import (
     AgentVote,
-    BacktestRow,
     DecisionResult,
     EvidenceItem,
 )
@@ -56,12 +56,14 @@ def make_decision_result() -> DecisionResult:
 
 def make_backtest_row() -> BacktestRow:
     return BacktestRow(
+        fold_id=2,
         decision_date=date(2026, 4, 25),
         label="down",
         aggregate_score=-0.41,
-        ground_truth="down",
-        next_day_return=-0.018,
-        hit=True,
+        target_label="down",
+        correct=True,
+        snapshot_id="snapshot:2026-04-25",
+        config_signature="cfg:abc123",
     )
 
 
@@ -119,20 +121,24 @@ def test_backtest_csv_fields_and_row_are_stable() -> None:
     row = make_backtest_row()
 
     assert BACKTEST_CSV_FIELDS == (
+        "fold_id",
         "decision_date",
         "label",
         "aggregate_score",
-        "ground_truth",
-        "next_day_return",
-        "hit",
+        "target_label",
+        "correct",
+        "snapshot_id",
+        "config_signature",
     )
     assert to_csv_row(row, BACKTEST_CSV_FIELDS) == {
+        "fold_id": "2",
         "decision_date": "2026-04-25",
         "label": "down",
         "aggregate_score": "-0.41",
-        "ground_truth": "down",
-        "next_day_return": "-0.018",
-        "hit": "true",
+        "target_label": "down",
+        "correct": "true",
+        "snapshot_id": "snapshot:2026-04-25",
+        "config_signature": "cfg:abc123",
     }
 
 
@@ -167,11 +173,11 @@ def test_parse_helpers_reject_invalid_payloads() -> None:
 
 
 def test_parse_backtest_row_rejects_missing_field() -> None:
-    with pytest.raises(ValueError, match="missing required key: hit"):
+    with pytest.raises(ValueError, match="missing required key: config_signature"):
         _ = parse_backtest_row(
             "{"
-            + '"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,'
-            + '"ground_truth":"down","next_day_return":-0.018'
+            + '"fold_id":2,"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,'
+            + '"target_label":"down","correct":true,"snapshot_id":"snapshot:2026-04-25"'
             + "}"
         )
 
@@ -201,13 +207,18 @@ def test_parse_backtest_row_rejects_missing_field() -> None:
         ),
         (
             parse_backtest_row,
-            '{"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,"ground_truth":"skip","next_day_return":-0.018,"hit":true}',
-            "ground_truth must be one of",
+            '{"fold_id":2,"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,"target_label":"skip","correct":true,"snapshot_id":"snapshot:2026-04-25","config_signature":"cfg:abc123"}',
+            "target_label must be one of",
         ),
         (
             parse_backtest_row,
-            '{"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,"ground_truth":"down","next_day_return":-0.018,"hit":1}',
-            "hit must be a bool",
+            '{"fold_id":2,"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,"target_label":"down","correct":1,"snapshot_id":"snapshot:2026-04-25","config_signature":"cfg:abc123"}',
+            "correct must be a bool",
+        ),
+        (
+            parse_backtest_row,
+            '{"fold_id":true,"decision_date":"2026-04-25","label":"down","aggregate_score":-0.41,"target_label":"down","correct":true,"snapshot_id":"snapshot:2026-04-25","config_signature":"cfg:abc123"}',
+            "fold_id must be an int",
         ),
     ],
 )

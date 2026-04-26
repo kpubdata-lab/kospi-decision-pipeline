@@ -19,7 +19,6 @@ from ..connectors import (
     FixtureKrxConnector,
     KosisConnector,
     KrxConnector,
-    PykrxKrxConnector,
 )
 from ..connectors.base import ConnectorRowBase, SourceMetadata
 from .manifests import BronzeManifest, LiveIngestManifest, ManifestEntry, write_manifest
@@ -180,6 +179,7 @@ class BronzeIngestor:
     def ingest(
         self,
         connector: object,
+        source: str,
         dataset_id: str,
         start: date,
         end: date,
@@ -188,22 +188,23 @@ class BronzeIngestor:
         definition = DATASET_DEFINITIONS.get(dataset_id)
         if definition is None:
             raise ValueError(f"unsupported dataset: {dataset_id}")
-
-        rows = definition.fetch_rows(connector, start, end)
-        grouped_rows = _group_rows_by_date(rows, definition.date_field_name)
-        entries = tuple(
-            self._write_partition(
-                source_name=definition.source_name,
-                dataset_id=dataset_id,
-                as_of_date=as_of_date,
-                rows=partition_rows,
-                snapshot_id=snapshot_id,
-            )
-            for as_of_date, partition_rows in grouped_rows
-        )
+        if definition.source_name != source:
+            raise ValueError(f"dataset {dataset_id} is not supported for source {source}")
 
         run_timestamp = self._resolve_run_timestamp()
         if snapshot_id is None:
+            rows = definition.fetch_rows(connector, start, end)
+            grouped_rows = _group_rows_by_date(rows, definition.date_field_name)
+            entries = tuple(
+                self._write_partition(
+                    source_name=definition.source_name,
+                    dataset_id=dataset_id,
+                    as_of_date=as_of_date,
+                    rows=partition_rows,
+                    snapshot_id=snapshot_id,
+                )
+                for as_of_date, partition_rows in grouped_rows
+            )
             manifest: BronzeManifest = BronzeManifest(
                 dataset_id=dataset_id,
                 source_name=definition.source_name,
@@ -211,25 +212,34 @@ class BronzeIngestor:
                 entries=entries,
             )
         else:
-            written_dates = tuple(as_of_date for as_of_date, _ in grouped_rows)
+            live_result = self._ingest_live_partitions(
+                connector=connector,
+                definition=definition,
+                dataset_id=dataset_id,
+                start=start,
+                end=end,
+                snapshot_id=snapshot_id,
+            )
             manifest = LiveIngestManifest(
                 dataset_id=dataset_id,
                 source_name=definition.source_name,
                 run_timestamp=run_timestamp,
-                entries=entries,
+                entries=live_result.entries,
                 snapshot_id=snapshot_id,
                 requested_start=start,
                 requested_end=end,
-                written_dates=written_dates,
-                skipped_dates=_skipped_dates(start, end, written_dates),
-                failed_dates=(),
-                source_metadata=_source_metadata(
+                written_dates=live_result.written_dates,
+                skipped_dates=live_result.skipped_dates,
+                failed_dates=live_result.failed_dates,
+                source_metadata=_live_source_metadata(
                     connector=connector,
                     source_name=definition.source_name,
                     dataset_id=dataset_id,
                     fetched_at=run_timestamp,
+                    sample_row=live_result.sample_row,
                 ),
             )
+            entries = live_result.entries
         manifest_path = (
             self._output_root_for_snapshot(snapshot_id)
             / definition.source_name
@@ -244,6 +254,70 @@ class BronzeIngestor:
             return self._deterministic_run_timestamp
         return datetime.now(timezone.utc).replace(microsecond=0)
 
+    def _ingest_live_partitions(
+        self,
+        *,
+        connector: object,
+        definition: _DatasetDefinition,
+        dataset_id: str,
+        start: date,
+        end: date,
+        snapshot_id: str,
+    ) -> _LivePartitionIngestResult:
+        entries: list[ManifestEntry] = []
+        written_dates: list[date] = []
+        skipped_dates: list[date] = []
+        failed_dates: list[date] = []
+        sample_row: ConnectorRowBase | None = None
+
+        current = start
+        while current <= end:
+            if self._partition_output_path(
+                source_name=definition.source_name,
+                dataset_id=dataset_id,
+                as_of_date=current,
+                snapshot_id=snapshot_id,
+            ).is_file():
+                skipped_dates.append(current)
+                current = current.fromordinal(current.toordinal() + 1)
+                continue
+
+            try:
+                rows = definition.fetch_rows(connector, current, current)
+            except Exception:
+                failed_dates.append(current)
+                current = current.fromordinal(current.toordinal() + 1)
+                continue
+
+            grouped_rows = _group_rows_by_date(rows, definition.date_field_name)
+            if len(grouped_rows) == 0:
+                skipped_dates.append(current)
+                current = current.fromordinal(current.toordinal() + 1)
+                continue
+
+            for as_of_date, partition_rows in grouped_rows:
+                entries.append(
+                    self._write_partition(
+                        source_name=definition.source_name,
+                        dataset_id=dataset_id,
+                        as_of_date=as_of_date,
+                        rows=partition_rows,
+                        snapshot_id=snapshot_id,
+                    )
+                )
+                written_dates.append(as_of_date)
+                if sample_row is None:
+                    sample_row = partition_rows[0]
+            current = current.fromordinal(current.toordinal() + 1)
+
+        return _LivePartitionIngestResult(
+            entries=tuple(entries),
+            written_dates=tuple(written_dates),
+            skipped_dates=tuple(skipped_dates),
+            failed_dates=tuple(failed_dates),
+            sample_row=sample_row,
+        )
+
     def _write_partition(
         self,
         source_name: str,
@@ -253,7 +327,12 @@ class BronzeIngestor:
         snapshot_id: str | None,
     ) -> ManifestEntry:
         relative_path = Path(source_name) / dataset_id / f"{as_of_date.isoformat()}.parquet"
-        output_path = self._output_root_for_snapshot(snapshot_id) / relative_path
+        output_path = self._partition_output_path(
+            source_name=source_name,
+            dataset_id=dataset_id,
+            as_of_date=as_of_date,
+            snapshot_id=snapshot_id,
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         records = [_row_to_record(row) for row in rows]
@@ -272,6 +351,12 @@ class BronzeIngestor:
         if snapshot_id is None:
             return self._output_root
         return self._output_root / snapshot_id
+
+    def _partition_output_path(
+        self, *, source_name: str, dataset_id: str, as_of_date: date, snapshot_id: str | None
+    ) -> Path:
+        relative_path = Path(source_name) / dataset_id / f"{as_of_date.isoformat()}.parquet"
+        return self._output_root_for_snapshot(snapshot_id) / relative_path
 
 
 def _group_rows_by_date(
@@ -330,19 +415,43 @@ def _source_metadata(
     )
 
 
-def _skipped_dates(start: date, end: date, written_dates: tuple[date, ...]) -> tuple[date, ...]:
-    written_lookup = set(written_dates)
-    skipped: list[date] = []
-    current = start
-    while current <= end:
-        if current not in written_lookup:
-            skipped.append(current)
-        current = current.fromordinal(current.toordinal() + 1)
-    return tuple(skipped)
+def _live_source_metadata(
+    *,
+    connector: object,
+    source_name: str,
+    dataset_id: str,
+    fetched_at: datetime,
+    sample_row: ConnectorRowBase | None,
+) -> SourceMetadata:
+    if sample_row is not None:
+        row_metadata = sample_row.metadata
+        return SourceMetadata(
+            source_name=row_metadata.source_name,
+            dataset_name=row_metadata.dataset_name,
+            fetched_at_utc=fetched_at.isoformat(),
+            connector_id=row_metadata.connector_id,
+            api_version=row_metadata.api_version,
+            key_fingerprint_sha256=row_metadata.key_fingerprint_sha256,
+        )
+    return _source_metadata(
+        connector=connector,
+        source_name=source_name,
+        dataset_id=dataset_id,
+        fetched_at=fetched_at,
+    )
 
 
 class ConnectorRegistry(Protocol):
     def get_connector(self, source: str) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _LivePartitionIngestResult:
+    entries: tuple[ManifestEntry, ...]
+    written_dates: tuple[date, ...]
+    skipped_dates: tuple[date, ...]
+    failed_dates: tuple[date, ...]
+    sample_row: ConnectorRowBase | None
 
 
 @final
@@ -362,11 +471,3 @@ class FixtureConnectorRegistry:
         if source not in registry:
             raise ValueError(f"unsupported source: {source}")
         return registry[source]
-
-
-@final
-class LiveConnectorRegistry:
-    def get_connector(self, source: str) -> object:
-        if source == "krx":
-            return PykrxKrxConnector()
-        raise NotImplementedError(f"live connector not implemented for source: {source}")

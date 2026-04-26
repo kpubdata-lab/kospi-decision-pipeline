@@ -10,6 +10,7 @@ from typing import Callable, Mapping, Protocol, TypedDict, cast, final, runtime_
 import httpx
 
 from ._http import HttpRetryPolicy, SyncHttpRequester
+from ._secrets import resolve_live_api_key
 from .base import ConnectorRowBase, SourceMetadata
 
 
@@ -42,7 +43,6 @@ class EcosConnector(Protocol):
 
 
 _ECOS_API_BASE_URL = "https://ecos.bok.or.kr"
-_ECOS_API_KEY_ENV_VAR = "ECOS_API_KEY"
 _ECOS_RESULT_OK = "INFO-000"
 _ECOS_FORMAT = "json"
 _ECOS_LANGUAGE = "kr"
@@ -96,7 +96,14 @@ class LiveEcosConnector:
         sleep: Callable[[float], None] | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
-        self._api_key = _resolve_api_key(api_key, environment or os.environ)
+        self._api_key = cast(
+            str,
+            resolve_live_api_key(
+                source="ecos",
+                api_key=api_key,
+                environment=environment or os.environ,
+            ),
+        )
         self._key_fingerprint_sha256 = hashlib.sha256(self._api_key.encode("utf-8")).hexdigest()[
             :16
         ]
@@ -262,16 +269,6 @@ def _parse_ecos_date(value: str) -> date:
 
 def _parse_decimal(value: str) -> Decimal:
     return Decimal(value)
-
-
-def _resolve_api_key(api_key: str | None, environment: Mapping[str, str]) -> str:
-    explicit = (api_key or "").strip()
-    if explicit:
-        return explicit
-    from_environment = environment.get(_ECOS_API_KEY_ENV_VAR, "").strip()
-    if from_environment:
-        return from_environment
-    raise ValueError("ECOS API key is required via explicit argument or ECOS_API_KEY")
 
 
 def _statistic_search_path(

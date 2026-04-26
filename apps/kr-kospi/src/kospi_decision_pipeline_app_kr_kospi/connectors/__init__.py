@@ -15,6 +15,7 @@ from .fixture import (
 )
 from .kosis import KosisConnector, KosisMacroIndicatorRow, PerPbrPercentileRow
 from .krx import InvestorFlowRow, KospiIndexRow, KrxConnector, MarketValuationRow, PykrxKrxConnector
+from .registry import LiveConnectorRegistry, resolve_live_api_key
 
 __all__ = [
     "ConnectorRow",
@@ -37,5 +38,7 @@ __all__ = [
     "MarketValuationRow",
     "PerPbrPercentileRow",
     "PykrxKrxConnector",
+    "LiveConnectorRegistry",
     "SourceMetadata",
+    "resolve_live_api_key",
 ]

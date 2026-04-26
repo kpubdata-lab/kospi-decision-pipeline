@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 import os
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 import yaml
 
 from kospi_decision_pipeline_core.backtest import BacktestRunner, WalkForwardSplitter
 from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario
 
-from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry, LiveConnectorRegistry
+from .connectors.registry import LiveConnectorRegistry
+from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry
+from .transforms.calendar import TradingCalendar
 from .transforms.gold_features import GoldFeatureBuilder, gold_lookback_start, gold_sha256
 from .transforms.silver import DATASET_DEFINITIONS, SilverNormalizer, silver_sha256
 
@@ -29,6 +31,10 @@ def _is_live_mode_requested(live_flag: bool) -> bool:
     return live_flag or os.getenv("KOSPI_LIVE") == "1"
 
 
+class ConnectorRegistry(Protocol):
+    def get_connector(self, source: str, *, api_key: str | None = None) -> object: ...
+
+
 def run_ingest_command(
     *,
     source: str,
@@ -37,19 +43,33 @@ def run_ingest_command(
     end: str,
     output_dir: str,
     live: bool,
+    snapshot_id: str | None = None,
+    api_key: str | None = None,
+    connector_registry: ConnectorRegistry | None = None,
+    deterministic_run_timestamp: datetime | None = None,
 ) -> int:
-    registry = (
+    live_mode = _is_live_mode_requested(live)
+    registry = connector_registry or (
         LiveConnectorRegistry()
-        if _is_live_mode_requested(live)
-        else FixtureConnectorRegistry(fixtures_root())
+        if live_mode
+        else cast(ConnectorRegistry, FixtureConnectorRegistry(fixtures_root()))
     )
-    connector = registry.get_connector(source)
-    ingestor = BronzeIngestor(output_root=Path(output_dir))
+    connector = (
+        registry.get_connector(source, api_key=api_key)
+        if live_mode
+        else cast(FixtureConnectorRegistry, registry).get_connector(source)
+    )
+    ingestor = BronzeIngestor(
+        output_root=Path(output_dir),
+        deterministic_run_timestamp=deterministic_run_timestamp,
+    )
     result = ingestor.ingest(
         connector=connector,
+        source=source,
         dataset_id=dataset,
         start=parse_date(start),
         end=parse_date(end),
+        snapshot_id=snapshot_id if live_mode else None,
     )
     for entry in result.entries:
         print(f"wrote {entry.path.as_posix()} sha256={entry.sha256}")
@@ -96,7 +116,7 @@ def run_build_features_command(
     if layer == "all":
         silver_root = Path(silver_dir)
         normalizer = SilverNormalizer(output_root=silver_root)
-        silver_start = gold_lookback_start(start=start_date, calendar=normalizer._calendar)
+        silver_start = gold_lookback_start(start=start_date, calendar=TradingCalendar())
         for requirement in GoldFeatureBuilder.REQUIRED_SILVER_DATASETS:
             written_paths = normalizer.normalize_dataset(
                 bronze_root=Path(bronze_dir),
@@ -198,6 +218,8 @@ class _CliArgs(argparse.Namespace):
     decision_date: str = ""
     folds_config: str = ""
     live: bool = False
+    snapshot_id: str = ""
+    api_key: str = ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -213,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     _ = ingest_parser.add_argument("--to", dest="end", required=True)
     _ = ingest_parser.add_argument("--out", dest="output_dir", default="data/bronze")
     _ = ingest_parser.add_argument("--live", action="store_true")
+    _ = ingest_parser.add_argument("--snapshot-id", default="")
+    _ = ingest_parser.add_argument("--api-key", default="")
     build_features_parser = sub.add_parser("build-features", help="build typed features")
     _ = build_features_parser.add_argument(
         "--layer", choices=("silver", "gold", "all"), required=True
@@ -251,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if cmd == "ingest":
         live_mode = _is_live_mode_requested(bool(args.live))
+        if live_mode and str(args.snapshot_id).strip() == "":
+            parser.error("--snapshot-id is required when live ingest is enabled")
         return run_ingest_command(
             source=str(args.source),
             dataset=str(args.dataset),
@@ -258,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
             end=str(args.end),
             output_dir=str(args.output_dir),
             live=live_mode,
+            snapshot_id=str(args.snapshot_id) or None,
+            api_key=str(args.api_key) or None,
         )
     if cmd == "build-features":
         layer = str(args.layer)

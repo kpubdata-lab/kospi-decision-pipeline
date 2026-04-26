@@ -20,8 +20,8 @@ from ..connectors import (
     KosisConnector,
     KrxConnector,
 )
-from ..connectors.base import ConnectorRow
-from .manifests import BronzeManifest, ManifestEntry, write_manifest
+from ..connectors.base import ConnectorRowBase, SourceMetadata
+from .manifests import BronzeManifest, LiveIngestManifest, ManifestEntry, write_manifest
 
 
 SourceName = str
@@ -54,54 +54,64 @@ class _DatasetDefinition:
 
 
 class _FetchRows(Protocol):
-    def __call__(self, connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]: ...
+    def __call__(
+        self, connector: object, start: date, end: date
+    ) -> tuple[ConnectorRowBase, ...]: ...
 
 
-def _fetch_krx_kospi_index(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_krx_kospi_index(
+    connector: object, start: date, end: date
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(KrxConnector, connector)
     return tuple(typed_connector.fetch_kospi_index(start, end))
 
 
-def _fetch_krx_investor_flow(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_krx_investor_flow(
+    connector: object, start: date, end: date
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(KrxConnector, connector)
     return tuple(typed_connector.fetch_investor_flow(start, end))
 
 
 def _fetch_krx_market_valuation(
     connector: object, start: date, end: date
-) -> tuple[ConnectorRow, ...]:
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(KrxConnector, connector)
     return tuple(typed_connector.fetch_market_valuation(start, end))
 
 
-def _fetch_ecos_base_rate(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_ecos_base_rate(
+    connector: object, start: date, end: date
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(EcosConnector, connector)
     return tuple(typed_connector.fetch_base_rate_series(start, end))
 
 
-def _fetch_ecos_usd_krw(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_ecos_usd_krw(connector: object, start: date, end: date) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(EcosConnector, connector)
     return tuple(typed_connector.fetch_usd_krw_series(start, end))
 
 
-def _fetch_ecos_bond_yield(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_ecos_bond_yield(
+    connector: object, start: date, end: date
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(EcosConnector, connector)
     return tuple(typed_connector.fetch_bond_yield_series(start, end))
 
 
-def _fetch_kosis_per_pbr(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_kosis_per_pbr(connector: object, start: date, end: date) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(KosisConnector, connector)
     return tuple(typed_connector.fetch_per_pbr_percentiles(start, end))
 
 
-def _fetch_kosis_macro(connector: object, start: date, end: date) -> tuple[ConnectorRow, ...]:
+def _fetch_kosis_macro(connector: object, start: date, end: date) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(KosisConnector, connector)
     return tuple(typed_connector.fetch_macro_indicators(start, end))
 
 
 def _fetch_data_portal_sample(
     connector: object, start: date, end: date
-) -> tuple[ConnectorRow, ...]:
+) -> tuple[ConnectorRowBase, ...]:
     typed_connector = cast(DataPortalConnector, connector)
     return tuple(typed_connector.fetch_sample_dataset(start, end))
 
@@ -172,6 +182,7 @@ class BronzeIngestor:
         dataset_id: str,
         start: date,
         end: date,
+        snapshot_id: str | None = None,
     ) -> BronzeIngestResult:
         definition = DATASET_DEFINITIONS.get(dataset_id)
         if definition is None:
@@ -185,17 +196,45 @@ class BronzeIngestor:
                 dataset_id=dataset_id,
                 as_of_date=as_of_date,
                 rows=partition_rows,
+                snapshot_id=snapshot_id,
             )
             for as_of_date, partition_rows in grouped_rows
         )
 
-        manifest = BronzeManifest(
-            dataset_id=dataset_id,
-            source_name=definition.source_name,
-            run_timestamp=self._resolve_run_timestamp(),
-            entries=entries,
+        run_timestamp = self._resolve_run_timestamp()
+        if snapshot_id is None:
+            manifest: BronzeManifest = BronzeManifest(
+                dataset_id=dataset_id,
+                source_name=definition.source_name,
+                run_timestamp=run_timestamp,
+                entries=entries,
+            )
+        else:
+            written_dates = tuple(as_of_date for as_of_date, _ in grouped_rows)
+            manifest = LiveIngestManifest(
+                dataset_id=dataset_id,
+                source_name=definition.source_name,
+                run_timestamp=run_timestamp,
+                entries=entries,
+                snapshot_id=snapshot_id,
+                requested_start=start,
+                requested_end=end,
+                written_dates=written_dates,
+                skipped_dates=_skipped_dates(start, end, written_dates),
+                failed_dates=(),
+                source_metadata=_source_metadata(
+                    connector=connector,
+                    source_name=definition.source_name,
+                    dataset_id=dataset_id,
+                    fetched_at=run_timestamp,
+                ),
+            )
+        manifest_path = (
+            self._output_root_for_snapshot(snapshot_id)
+            / definition.source_name
+            / dataset_id
+            / "manifest.json"
         )
-        manifest_path = self._output_root / definition.source_name / dataset_id / "manifest.json"
         write_manifest(manifest_path, manifest)
         return BronzeIngestResult(entries=entries, manifest_path=manifest_path)
 
@@ -209,10 +248,11 @@ class BronzeIngestor:
         source_name: str,
         dataset_id: str,
         as_of_date: date,
-        rows: tuple[ConnectorRow, ...],
+        rows: tuple[ConnectorRowBase, ...],
+        snapshot_id: str | None,
     ) -> ManifestEntry:
         relative_path = Path(source_name) / dataset_id / f"{as_of_date.isoformat()}.parquet"
-        output_path = self._output_root / relative_path
+        output_path = self._output_root_for_snapshot(snapshot_id) / relative_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         records = [_row_to_record(row) for row in rows]
@@ -227,18 +267,23 @@ class BronzeIngestor:
             fetched_at=str(sorted_records[0]["fetched_at"]),
         )
 
+    def _output_root_for_snapshot(self, snapshot_id: str | None) -> Path:
+        if snapshot_id is None:
+            return self._output_root
+        return self._output_root / snapshot_id
+
 
 def _group_rows_by_date(
-    rows: tuple[ConnectorRow, ...], date_field_name: str
-) -> tuple[tuple[date, tuple[ConnectorRow, ...]], ...]:
-    grouped: dict[date, list[ConnectorRow]] = {}
+    rows: tuple[ConnectorRowBase, ...], date_field_name: str
+) -> tuple[tuple[date, tuple[ConnectorRowBase, ...]], ...]:
+    grouped: dict[date, list[ConnectorRowBase]] = {}
     for row in rows:
         as_of_date = cast(date, getattr(row, date_field_name))
         grouped.setdefault(as_of_date, []).append(row)
     return tuple((as_of_date, tuple(grouped[as_of_date])) for as_of_date in sorted(grouped))
 
 
-def _row_to_record(row: ConnectorRow) -> dict[str, str | int]:
+def _row_to_record(row: ConnectorRowBase) -> dict[str, str | int]:
     payload = cast(dict[str, object], asdict(row))
     metadata = payload.pop("metadata")
     if not isinstance(metadata, dict):
@@ -246,8 +291,8 @@ def _row_to_record(row: ConnectorRow) -> dict[str, str | int]:
     metadata_payload = cast(dict[str, object], metadata)
     record: dict[str, str | int] = {
         "source_name": _normalize_scalar(metadata_payload["source_name"]),
-        "source_series_id": _normalize_scalar(metadata_payload["source_series_id"]),
-        "fetched_at": _normalize_scalar(metadata_payload["fetched_at"]),
+        "source_series_id": _normalize_scalar(metadata_payload["dataset_name"]),
+        "fetched_at": _normalize_scalar(metadata_payload["fetched_at_utc"]),
     }
     ordered_field_names = sorted(field.name for field in fields(row) if field.name != "metadata")
     for field_name in ordered_field_names:
@@ -270,6 +315,29 @@ def _normalize_scalar(value: object) -> str | int:
 
 def _record_sort_key(record: dict[str, str | int]) -> tuple[str, ...]:
     return tuple(f"{key}={record[key]}" for key in sorted(record))
+
+
+def _source_metadata(
+    *, connector: object, source_name: str, dataset_id: str, fetched_at: datetime
+) -> SourceMetadata:
+    connector_type = type(connector)
+    return SourceMetadata(
+        source_name=source_name,
+        dataset_name=dataset_id,
+        fetched_at_utc=fetched_at.isoformat(),
+        connector_id=f"{connector_type.__module__}.{connector_type.__qualname__}",
+    )
+
+
+def _skipped_dates(start: date, end: date, written_dates: tuple[date, ...]) -> tuple[date, ...]:
+    written_lookup = set(written_dates)
+    skipped: list[date] = []
+    current = start
+    while current <= end:
+        if current not in written_lookup:
+            skipped.append(current)
+        current = current.fromordinal(current.toordinal() + 1)
+    return tuple(skipped)
 
 
 class ConnectorRegistry(Protocol):

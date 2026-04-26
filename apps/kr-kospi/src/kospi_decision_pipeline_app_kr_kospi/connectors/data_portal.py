@@ -5,11 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from .base import ConnectorRow
+from .base import ConnectorRowBase
 
 
 @dataclass(frozen=True, slots=True)
-class DataPortalSampleRow(ConnectorRow):
+class DataPortalSampleRow(ConnectorRowBase):
     value_date: date
     metric_name: str
     metric_value: Decimal

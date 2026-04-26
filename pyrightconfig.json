@@ -1,0 +1,14 @@
+{
+  "include": [
+    "core/src",
+    "core/tests",
+    "apps/kr-kospi/src",
+    "apps/kr-kospi/tests"
+  ],
+  "extraPaths": [
+    "core/src",
+    "apps/kr-kospi/src"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict"
+}

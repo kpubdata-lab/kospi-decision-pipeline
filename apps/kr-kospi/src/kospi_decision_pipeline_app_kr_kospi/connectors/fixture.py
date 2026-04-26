@@ -30,13 +30,14 @@ class _FixtureLoader:
     def __init__(self, fixtures_root: Path) -> None:
         self._fixtures_root = fixtures_root
 
-    def load(self, source_name: str, dataset_name: str) -> _FixturePayload:
+    def load(self, source_name: str, dataset_name: str, connector_id: str) -> _FixturePayload:
         fixture_path = self._fixtures_root / source_name / f"{dataset_name}.json"
         payload = cast(dict[str, object], json.loads(fixture_path.read_text(encoding="utf-8")))
         metadata = SourceMetadata(
             source_name=str(payload["source_name"]),
-            source_series_id=str(payload["source_series_id"]),
-            fetched_at=datetime.fromisoformat(str(payload["fetched_at"])),
+            dataset_name=str(payload["source_series_id"]),
+            fetched_at_utc=datetime.fromisoformat(str(payload["fetched_at"])).isoformat(),
+            connector_id=connector_id,
         )
         raw_rows = cast(list[dict[str, object]], payload["rows"])
         return _FixturePayload(metadata=metadata, rows=tuple(raw_rows))
@@ -71,7 +72,7 @@ class FixtureKrxConnector:
         self._loader = _FixtureLoader(fixtures_root)
 
     def fetch_kospi_index(self, start: date, end: date) -> tuple[KospiIndexRow, ...]:
-        payload = self._loader.load("krx", "kospi_index")
+        payload = self._loader.load("krx", "kospi_index", _connector_id(self))
         rows = tuple(
             KospiIndexRow(
                 metadata=payload.metadata,
@@ -88,7 +89,7 @@ class FixtureKrxConnector:
         return _filter_by_date_range(rows, lambda row: row.trade_date, start, end)
 
     def fetch_investor_flow(self, start: date, end: date) -> tuple[InvestorFlowRow, ...]:
-        payload = self._loader.load("krx", "investor_flow")
+        payload = self._loader.load("krx", "investor_flow", _connector_id(self))
         rows = tuple(
             InvestorFlowRow(
                 metadata=payload.metadata,
@@ -102,7 +103,7 @@ class FixtureKrxConnector:
         return _filter_by_date_range(rows, lambda row: row.trade_date, start, end)
 
     def fetch_market_valuation(self, start: date, end: date) -> tuple[MarketValuationRow, ...]:
-        payload = self._loader.load("krx", "market_valuation")
+        payload = self._loader.load("krx", "market_valuation", _connector_id(self))
         rows = tuple(
             MarketValuationRow(
                 metadata=payload.metadata,
@@ -124,7 +125,7 @@ class FixtureEcosConnector:
         self._loader = _FixtureLoader(fixtures_root)
 
     def fetch_base_rate_series(self, start: date, end: date) -> tuple[EcosBaseRateRow, ...]:
-        payload = self._loader.load("ecos", "base_rate")
+        payload = self._loader.load("ecos", "base_rate", _connector_id(self))
         rows = tuple(
             EcosBaseRateRow(
                 metadata=payload.metadata,
@@ -136,7 +137,7 @@ class FixtureEcosConnector:
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
 
     def fetch_usd_krw_series(self, start: date, end: date) -> tuple[EcosUsdKrwRow, ...]:
-        payload = self._loader.load("ecos", "usd_krw")
+        payload = self._loader.load("ecos", "usd_krw", _connector_id(self))
         rows = tuple(
             EcosUsdKrwRow(
                 metadata=payload.metadata,
@@ -148,7 +149,7 @@ class FixtureEcosConnector:
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
 
     def fetch_bond_yield_series(self, start: date, end: date) -> tuple[EcosBondYieldRow, ...]:
-        payload = self._loader.load("ecos", "bond_yield")
+        payload = self._loader.load("ecos", "bond_yield", _connector_id(self))
         rows = tuple(
             EcosBondYieldRow(
                 metadata=payload.metadata,
@@ -169,7 +170,7 @@ class FixtureKosisConnector:
         self._loader = _FixtureLoader(fixtures_root)
 
     def fetch_per_pbr_percentiles(self, start: date, end: date) -> tuple[PerPbrPercentileRow, ...]:
-        payload = self._loader.load("kosis", "per_pbr_percentiles")
+        payload = self._loader.load("kosis", "per_pbr_percentiles", _connector_id(self))
         rows = tuple(
             PerPbrPercentileRow(
                 metadata=payload.metadata,
@@ -182,7 +183,7 @@ class FixtureKosisConnector:
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
 
     def fetch_macro_indicators(self, start: date, end: date) -> tuple[KosisMacroIndicatorRow, ...]:
-        payload = self._loader.load("kosis", "macro_indicators")
+        payload = self._loader.load("kosis", "macro_indicators", _connector_id(self))
         rows = tuple(
             KosisMacroIndicatorRow(
                 metadata=payload.metadata,
@@ -204,7 +205,7 @@ class FixtureDataPortalConnector:
         self._loader = _FixtureLoader(fixtures_root)
 
     def fetch_sample_dataset(self, start: date, end: date) -> tuple[DataPortalSampleRow, ...]:
-        payload = self._loader.load("data_portal", "sample_dataset")
+        payload = self._loader.load("data_portal", "sample_dataset", _connector_id(self))
         rows = tuple(
             DataPortalSampleRow(
                 metadata=payload.metadata,
@@ -215,3 +216,8 @@ class FixtureDataPortalConnector:
             for row in payload.rows
         )
         return _filter_by_date_range(rows, lambda row: row.value_date, start, end)
+
+
+def _connector_id(connector: object) -> str:
+    connector_type = type(connector)
+    return f"{connector_type.__module__}.{connector_type.__qualname__}"

@@ -1,0 +1,401 @@
+name: Live Smoke
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: live-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      DEBIAN_FRONTEND: noninteractive
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_EDITOR: ":"
+      EDITOR: ":"
+      VISUAL: ""
+      GIT_PAGER: cat
+      PAGER: cat
+      ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+      KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '\n========== uv sync --extra dev =========='"\n"
+          uv sync --extra dev
+
+      - name: Run nightly live smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          header() {
+            printf '\n========== %s =========='"\n" "$1"
+          }
+
+          run_fixture_smoke() {
+            local fixture_root
+            fixture_root="${RUNNER_TEMP}/kospi-fixture-smoke"
+            local fixture_bronze="${fixture_root}/bronze"
+            local fixture_silver="${fixture_root}/silver"
+            local fixture_runtime="${fixture_root}/runtime"
+
+            header "Fixture smoke: ingest"
+            uv run --python 3.12 kospi-pipeline ingest \
+              --source krx \
+              --dataset kospi_index \
+              --from 2024-01-02 \
+              --to 2024-01-05 \
+              --out "${fixture_bronze}"
+
+            header "Fixture smoke: silver normalization"
+            uv run --python 3.12 kospi-pipeline build-features \
+              --layer silver \
+              --source krx \
+              --dataset kospi_index \
+              --from 2024-01-02 \
+              --to 2024-01-05 \
+              --bronze-dir "${fixture_bronze}" \
+              --silver-dir "${fixture_silver}" \
+              --out "${fixture_silver}"
+
+            header "Fixture smoke: synthetic gold + backtest dataset"
+            FIXTURE_RUNTIME="${fixture_runtime}" uv run --python 3.12 python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from datetime import date, timedelta
+          from pathlib import Path
+
+          import pyarrow as pa
+          import pyarrow.parquet as pq
+          import yaml
+
+          root = Path(os.environ["FIXTURE_RUNTIME"])
+          config_dir = root / "config"
+          gold_dir = root / "data" / "gold"
+          backtest_dir = root / "data" / "backtests"
+          config_dir.mkdir(parents=True, exist_ok=True)
+          gold_dir.mkdir(parents=True, exist_ok=True)
+          backtest_dir.mkdir(parents=True, exist_ok=True)
+
+          agents_payload = {
+              "weights": {
+                  "technical": 0.30,
+                  "domestic_macro": 0.20,
+                  "flow": 0.25,
+                  "valuation": 0.10,
+                  "volatility": 0.15,
+              },
+              "thresholds": {"up": 0.25, "down": -0.25},
+              "agents": {
+                  "technical": {
+                      "rule_version": "technical@1.0.0",
+                      "thresholds": {
+                          "ma5_gap_up_min": 0.005,
+                          "close_position_up_min": 0.60,
+                          "return_5d_up_min": 0.010,
+                          "ma5_gap_down_max": -0.005,
+                          "close_position_down_max": 0.40,
+                          "return_5d_down_max": -0.010,
+                      },
+                  },
+                  "domestic_macro": {
+                      "rule_version": "domestic_macro@1.0.0",
+                      "thresholds": {
+                          "bok_rate_change_up_max": 0.00,
+                          "usdkrw_return_5d_up_max": 0.010,
+                          "bond_yield_change_30d_up_max": 0.05,
+                          "bok_rate_change_down_min": 0.25,
+                          "usdkrw_return_5d_down_min": 0.020,
+                          "bond_yield_change_30d_down_min": 0.10,
+                          "usdkrw_return_5d_mixed_pos_min": 0.015,
+                          "usdkrw_return_5d_mixed_neg_max": -0.015,
+                          "bond_yield_change_30d_mixed_pos_min": 0.05,
+                          "bond_yield_change_30d_mixed_neg_max": 0.00,
+                      },
+                  },
+                  "flow": {
+                      "rule_version": "flow@1.0.0",
+                      "thresholds": {
+                          "foreign_pct_up_min": 0.010,
+                          "foreign_pct_down_max": -0.010,
+                          "foreign_pct_neutral_abs_max": 0.003,
+                      },
+                  },
+                  "valuation": {
+                      "rule_version": "valuation@1.0.0",
+                      "thresholds": {
+                          "per_percentile_up_max": 0.30,
+                          "pbr_percentile_up_max": 0.30,
+                          "per_percentile_down_min": 0.70,
+                          "pbr_percentile_down_min": 0.70,
+                          "fair_value_center": 0.50,
+                          "fair_value_half_band": 0.10,
+                      },
+                  },
+                  "volatility": {
+                      "rule_version": "volatility@1.0.0",
+                      "thresholds": {
+                          "realized_vol_20d_up_max": 0.18,
+                          "realized_vol_pct_up_max": 0.30,
+                          "atr_14d_up_max": 35.0,
+                          "realized_vol_pct_down_min": 0.80,
+                          "realized_vol_20d_down_min": 0.25,
+                          "atr_14d_down_min": 45.0,
+                          "realized_vol_pct_mid_low": 0.30,
+                          "realized_vol_pct_mid_high": 0.80,
+                      },
+                  },
+              },
+          }
+          scenario_payload = {
+              "scenario_id": "kospi.next_day",
+              "horizon": "next_day",
+              "agents": [
+                  "technical",
+                  "domestic_macro",
+                  "flow",
+                  "valuation",
+                  "volatility",
+                  "decision",
+              ],
+              "runtime": {
+                  "agents_config_path": str(config_dir / "agents.yaml"),
+                  "features_path": str(gold_dir / "decision_features.parquet"),
+                  "output_dir": str(root / "out" / "decisions"),
+              },
+          }
+          rows = [
+              {
+                  "as_of_date": date(2025, 2, 13),
+                  "kospi_return_1d": 0.01,
+                  "kospi_return_5d": 0.02,
+                  "kospi_ma5_gap": 0.01,
+                  "kospi_close_position": 0.75,
+                  "bok_base_rate_change_30d": 0.0,
+                  "usd_krw_return_5d": 0.0,
+                  "kr_bond_yield_change_30d": 0.0,
+                  "foreign_net_buy_krw_5d_sum": 10.0,
+                  "institution_net_buy_krw_5d_sum": 5.0,
+                  "individual_net_buy_krw_5d_sum": -15.0,
+                  "foreign_net_buy_5d_pct_of_turnover": 0.02,
+                  "kospi_per": 10.0,
+                  "kospi_pbr": 1.0,
+                  "kospi_per_percentile_252d": 0.2,
+                  "kospi_pbr_percentile_252d": 0.2,
+                  "kospi_realized_vol_20d": 0.15,
+                  "kospi_realized_vol_20d_percentile_252d": 0.2,
+                  "kospi_atr_14d": 12.0,
+              }
+          ]
+          backtest_rows = []
+          start = date(2025, 2, 3)
+          targets = ["down", "down", "up", "down", "up"]
+          for index, target in enumerate(targets):
+              trade_date = start + timedelta(days=index)
+              backtest_rows.append(
+                  {
+                      "trade_date": trade_date,
+                      "kospi_return_1d": 0.01,
+                      "kospi_return_3d": 0.015,
+                      "kospi_return_5d": 0.02,
+                      "kospi_ma5": 100.0 + index,
+                      "kospi_ma20": 98.0 + index,
+                      "kospi_ma5_gap": 0.01,
+                      "kospi_close_position": 0.75,
+                      "bok_base_rate": 3.0,
+                      "bok_base_rate_change_30d": 0.0,
+                      "usd_krw_close": 1300.0,
+                      "usd_krw_return_5d": 0.0,
+                      "kr_bond_yield_3y": 2.5,
+                      "kr_bond_yield_change_30d": 0.0,
+                      "foreign_net_buy_krw_5d_sum": 10.0,
+                      "institution_net_buy_krw_5d_sum": 5.0,
+                      "individual_net_buy_krw_5d_sum": -15.0,
+                      "foreign_net_buy_5d_pct_of_turnover": 0.02,
+                      "kospi_per": 10.0,
+                      "kospi_pbr": 1.0,
+                      "kospi_per_percentile_252d": 0.2,
+                      "kospi_pbr_percentile_252d": 0.2,
+                      "kospi_realized_vol_20d": 0.15,
+                      "kospi_realized_vol_20d_percentile_252d": 0.2,
+                      "kospi_atr_14d": 12.0,
+                      "target_next_day_simple_return": 0.01,
+                      "target_next_day_log_return": 0.01,
+                      "target_direction_label": target,
+                  }
+              )
+
+          (config_dir / "agents.yaml").write_text(
+              yaml.safe_dump(agents_payload, sort_keys=False),
+              encoding="utf-8",
+          )
+          (config_dir / "scenario.yaml").write_text(
+              yaml.safe_dump(scenario_payload, sort_keys=False),
+              encoding="utf-8",
+          )
+          (config_dir / "folds.yaml").write_text(
+              yaml.safe_dump(
+                  {"min_train_rows": 2, "test_fold_size": 2, "gap_days": 0},
+                  sort_keys=False,
+              ),
+              encoding="utf-8",
+          )
+          pq.write_table(pa.Table.from_pylist(rows), gold_dir / "decision_features.parquet", compression="snappy")
+          pq.write_table(
+              pa.Table.from_pylist(backtest_rows),
+              gold_dir / "backtest_dataset.parquet",
+              compression="snappy",
+          )
+          PY
+
+            header "Fixture smoke: run"
+            uv run --python 3.12 kospi-pipeline run \
+              --scenario "${fixture_runtime}/config/scenario.yaml" \
+              --features "${fixture_runtime}/data/gold/decision_features.parquet" \
+              --out "${fixture_runtime}/out/decisions"
+
+            header "Fixture smoke: run-backtest"
+            uv run --python 3.12 kospi-pipeline run-backtest \
+              --dataset "${fixture_runtime}/data/gold/backtest_dataset.parquet" \
+              --scenario "${fixture_runtime}/config/scenario.yaml" \
+              --out "${fixture_runtime}/out/backtests" \
+              --folds-config "${fixture_runtime}/config/folds.yaml"
+          }
+
+          if [[ -z "${ECOS_API_KEY:-}" ]]; then
+            echo "::warning title=Live smoke skipped::ECOS_API_KEY is not configured. Running pure-fixture CLI smoke instead."
+            run_fixture_smoke
+            exit 0
+          fi
+
+          header "Compute live smoke window"
+          LIVE_START="$(uv run --python 3.12 python - <<'PY'
+          from datetime import date, timedelta
+          print((date.today() - timedelta(days=430)).isoformat())
+          PY
+          )"
+          LIVE_END="$(uv run --python 3.12 python - <<'PY'
+          from datetime import date, timedelta
+          print((date.today() - timedelta(days=1)).isoformat())
+          PY
+          )"
+          SNAPSHOT_ID="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+          BRONZE_ROOT="data/live-smoke/bronze"
+          SNAPSHOT_BRONZE_ROOT="${BRONZE_ROOT}/${SNAPSHOT_ID}"
+          SILVER_ROOT="data/live-smoke/silver/${SNAPSHOT_ID}"
+          GOLD_ROOT="data/live-smoke/gold/${SNAPSHOT_ID}"
+          DECISION_ROOT="data/live-smoke/decisions/${SNAPSHOT_ID}"
+          BACKTEST_ROOT="data/live-smoke/backtests/${SNAPSHOT_ID}"
+          printf 'snapshot_id=%s\nwindow=%s..%s\n' "${SNAPSHOT_ID}" "${LIVE_START}" "${LIVE_END}"
+
+          header "Live ingest: KRX"
+          uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset kospi_index --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset investor_flow --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset market_valuation --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
+
+          header "Live ingest: ECOS"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_rate --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset usd_krw --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset bond_yield --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
+
+          if [[ -n "${KOSIS_API_KEY:-}" ]]; then
+            header "Live ingest: KOSIS bronze-only"
+            uv run --python 3.12 kospi-pipeline ingest --live --source kosis --dataset macro_indicators --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${KOSIS_API_KEY}" --out "${BRONZE_ROOT}"
+          else
+            echo "::warning title=KOSIS skipped::KOSIS_API_KEY is not configured. Skipping bronze-only KOSIS ingest for this run."
+          fi
+
+          header "Build silver and gold"
+          uv run --python 3.12 kospi-pipeline build-features \
+            --layer all \
+            --from "${LIVE_START}" \
+            --to "${LIVE_END}" \
+            --bronze-dir "${SNAPSHOT_BRONZE_ROOT}" \
+            --silver-dir "${SILVER_ROOT}" \
+            --out "${GOLD_ROOT}"
+
+          header "Run snapshot decision"
+          uv run --python 3.12 kospi-pipeline run \
+            --scenario apps/kr-kospi/config/scenario.kospi.next_day.yaml \
+            --features "${GOLD_ROOT}/decision_features.parquet" \
+            --out "${DECISION_ROOT}"
+
+          header "Build backtest dataset"
+          GOLD_ROOT="${GOLD_ROOT}" uv run --python 3.12 python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          from kospi_decision_pipeline_app_kr_kospi.transforms.target_labels import build_backtest_dataset
+
+          gold_root = Path(os.environ["GOLD_ROOT"])
+          build_backtest_dataset(
+              gold_root / "decision_features.parquet",
+              gold_root / "backtest_dataset.parquet",
+          )
+          PY
+
+          header "Trim short backtest smoke window"
+          GOLD_ROOT="${GOLD_ROOT}" BACKTEST_ROOT="${BACKTEST_ROOT}" uv run --python 3.12 python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          import pyarrow as pa
+          import pyarrow.parquet as pq
+          import yaml
+
+          gold_root = Path(os.environ["GOLD_ROOT"])
+          backtest_root = Path(os.environ["BACKTEST_ROOT"])
+          backtest_root.mkdir(parents=True, exist_ok=True)
+
+          table = pq.read_table(gold_root / "backtest_dataset.parquet")
+          rows = table.to_pylist()
+          short_rows = rows[-30:]
+          if len(short_rows) < 25:
+              raise SystemExit(
+                  f"expected at least 25 backtest rows for live smoke, found {len(short_rows)}"
+              )
+          pq.write_table(
+              pa.Table.from_pylist(short_rows),
+              backtest_root / "backtest_dataset_last_30.parquet",
+              compression="snappy",
+          )
+          (backtest_root / "folds.yaml").write_text(
+              yaml.safe_dump(
+                  {"min_train_rows": 20, "test_fold_size": 5, "gap_days": 0},
+                  sort_keys=False,
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          header "Run short backtest smoke"
+          uv run --python 3.12 kospi-pipeline run-backtest \
+            --dataset "${BACKTEST_ROOT}/backtest_dataset_last_30.parquet" \
+            --scenario apps/kr-kospi/config/scenario.kospi.next_day.yaml \
+            --out "${BACKTEST_ROOT}/results" \
+            --folds-config "${BACKTEST_ROOT}/folds.yaml"

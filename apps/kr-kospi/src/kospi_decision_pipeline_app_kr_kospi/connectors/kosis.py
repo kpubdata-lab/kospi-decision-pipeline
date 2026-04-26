@@ -5,18 +5,18 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from .base import ConnectorRow
+from .base import ConnectorRowBase
 
 
 @dataclass(frozen=True, slots=True)
-class PerPbrPercentileRow(ConnectorRow):
+class PerPbrPercentileRow(ConnectorRowBase):
     value_date: date
     per_percentile: Decimal
     pbr_percentile: Decimal
 
 
 @dataclass(frozen=True, slots=True)
-class KosisMacroIndicatorRow(ConnectorRow):
+class KosisMacroIndicatorRow(ConnectorRowBase):
     value_date: date
     indicator_name: str
     indicator_value: Decimal

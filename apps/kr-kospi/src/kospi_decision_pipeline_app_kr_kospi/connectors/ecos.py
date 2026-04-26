@@ -5,23 +5,23 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from .base import ConnectorRow
+from .base import ConnectorRowBase
 
 
 @dataclass(frozen=True, slots=True)
-class EcosBaseRateRow(ConnectorRow):
+class EcosBaseRateRow(ConnectorRowBase):
     value_date: date
     base_rate: Decimal
 
 
 @dataclass(frozen=True, slots=True)
-class EcosUsdKrwRow(ConnectorRow):
+class EcosUsdKrwRow(ConnectorRowBase):
     value_date: date
     exchange_rate: Decimal
 
 
 @dataclass(frozen=True, slots=True)
-class EcosBondYieldRow(ConnectorRow):
+class EcosBondYieldRow(ConnectorRowBase):
     value_date: date
     maturity_code: str
     yield_rate: Decimal

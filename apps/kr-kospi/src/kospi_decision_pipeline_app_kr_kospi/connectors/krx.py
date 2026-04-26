@@ -5,11 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from .base import ConnectorRow
+from .base import ConnectorRowBase
 
 
 @dataclass(frozen=True, slots=True)
-class KospiIndexRow(ConnectorRow):
+class KospiIndexRow(ConnectorRowBase):
     trade_date: date
     open_price: Decimal
     high_price: Decimal
@@ -20,7 +20,7 @@ class KospiIndexRow(ConnectorRow):
 
 
 @dataclass(frozen=True, slots=True)
-class InvestorFlowRow(ConnectorRow):
+class InvestorFlowRow(ConnectorRowBase):
     trade_date: date
     individual_net_buy: Decimal
     foreign_net_buy: Decimal
@@ -28,7 +28,7 @@ class InvestorFlowRow(ConnectorRow):
 
 
 @dataclass(frozen=True, slots=True)
-class MarketValuationRow(ConnectorRow):
+class MarketValuationRow(ConnectorRowBase):
     trade_date: date
     market_capitalization: Decimal
     trailing_per: Decimal

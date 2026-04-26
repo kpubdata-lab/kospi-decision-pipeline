@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -19,6 +19,7 @@ from kospi_decision_pipeline_core.agents import (
     VolatilityAgent,
     compute_config_signature,
 )
+from kospi_decision_pipeline_core.calendar import TradingCalendar
 from kospi_decision_pipeline_core.features.leakage_guard import (
     LeakageError,
     assert_join_not_from_future,
@@ -274,39 +275,36 @@ def _matching_rows(rows: list[dict[str, object]], decision_date: date) -> list[d
 
 
 def _assert_lag_safe_row(row: dict[str, object], decision_date: date) -> None:
-    if "as_of_date" in row or "trade_date" in row:
-        joined_as_of = row.get("as_of_date", row.get("trade_date"))
-        if not isinstance(joined_as_of, date):
-            raise LeakageError("features row must include a valid as_of_date")
-        assert_join_not_from_future(joined_as_of=joined_as_of, decision_date=decision_date)
-        if joined_as_of >= decision_date:
-            raise LeakageError("features row must be strictly earlier than decision_date")
+    joined_as_of = row.get("as_of_date", row.get("trade_date"))
+    if not isinstance(joined_as_of, date):
+        raise LeakageError("features row must include provenance as_of_date or trade_date")
+    assert_join_not_from_future(joined_as_of=joined_as_of, decision_date=decision_date)
+    if joined_as_of >= decision_date:
+        raise LeakageError("features row must be strictly earlier than decision_date")
 
 
 def _previous_trading_day(decision_date: date) -> date:
-    current = decision_date - timedelta(days=1)
-    while current.weekday() >= 5:
-        current -= timedelta(days=1)
-    return current
+    return TradingCalendar().previous_trading_day(decision_date)
 
 
 def _runtime_decision_date(row: dict[str, object]) -> date:
     raw_decision_date = row.get("decision_date")
+    joined_as_of = row.get("as_of_date", row.get("trade_date"))
     if raw_decision_date is not None:
         if not isinstance(raw_decision_date, date):
             raise ValueError("decision_date must be a date")
+        if not isinstance(joined_as_of, date):
+            raise ValueError(
+                "runtime features row must include provenance as_of_date or trade_date"
+            )
         return raw_decision_date
-    raw_as_of = row.get("as_of_date", row.get("trade_date"))
-    if not isinstance(raw_as_of, date):
+    if not isinstance(joined_as_of, date):
         raise ValueError("runtime features row must include as_of_date or decision_date")
-    return _next_weekday(raw_as_of)
+    return _next_weekday(joined_as_of)
 
 
 def _next_weekday(current_date: date) -> date:
-    candidate = current_date + timedelta(days=1)
-    while candidate.weekday() >= 5:
-        candidate += timedelta(days=1)
-    return candidate
+    return TradingCalendar().next_trading_day(current_date)
 
 
 def _resolve_snapshot_id(row: dict[str, object]) -> str:

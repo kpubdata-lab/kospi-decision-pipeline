@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from datetime import date
 import os
 from pathlib import Path
+from typing import cast
 
+import yaml
+
+from kospi_decision_pipeline_core.backtest import BacktestRunner, WalkForwardSplitter
 from kospi_decision_pipeline_core.runtime.service import run_kospi_scenario
 
 from .ingest.bronze import BronzeIngestor, FixtureConnectorRegistry, LiveConnectorRegistry
@@ -129,6 +134,55 @@ def run_scenario_command(
     return 0
 
 
+def run_backtest_command(
+    *,
+    dataset: str,
+    scenario: str,
+    output_dir: str,
+    folds_config: str,
+) -> int:
+    runner = BacktestRunner(
+        splitter=_load_backtest_splitter(folds_config),
+        scenario_path=Path(scenario),
+        output_dir=Path(output_dir),
+    )
+    _ = runner.run(dataset_path=Path(dataset))
+    return 0
+
+
+def _load_backtest_splitter(folds_config: str) -> WalkForwardSplitter:
+    if folds_config == "":
+        return WalkForwardSplitter()
+    loaded = cast(object, yaml.safe_load(Path(folds_config).read_text(encoding="utf-8")))
+    payload = _ensure_mapping(loaded)
+    min_train_rows = _require_int(payload, "min_train_rows")
+    test_fold_size = _require_int(payload, "test_fold_size")
+    gap_days = _require_int(payload, "gap_days")
+    return WalkForwardSplitter(
+        min_train_rows=min_train_rows,
+        test_fold_size=test_fold_size,
+        gap_days=gap_days,
+    )
+
+
+def _require_int(payload: Mapping[str, object], key: str) -> int:
+    if key not in payload:
+        raise ValueError(f"missing required key: {key}")
+    value = payload[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an int")
+    return value
+
+
+def _ensure_mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError("folds config must be a mapping")
+    for key in cast(Mapping[object, object], value):
+        if not isinstance(key, str):
+            raise ValueError("folds config keys must be strings")
+    return cast(Mapping[str, object], value)
+
+
 class _CliArgs(argparse.Namespace):
     cmd: str | None = None
     layer: str = ""
@@ -142,6 +196,7 @@ class _CliArgs(argparse.Namespace):
     scenario: str = ""
     features: str = ""
     decision_date: str = ""
+    folds_config: str = ""
     live: bool = False
 
 
@@ -179,6 +234,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ = run_scenario_parser.add_argument("--features", default="")
     _ = run_scenario_parser.add_argument("--out", dest="output_dir", default="")
+    run_backtest_parser = sub.add_parser("run-backtest", help="run walk-forward backtest")
+    _ = run_backtest_parser.add_argument("--dataset", default="data/gold/backtest_dataset.parquet")
+    _ = run_backtest_parser.add_argument(
+        "--scenario",
+        default="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+    )
+    _ = run_backtest_parser.add_argument("--out", dest="output_dir", required=True)
+    _ = run_backtest_parser.add_argument("--folds-config", default="")
     for name in ("run", "backtest", "report"):
         _ = sub.add_parser(name, help=f"{name} (not yet implemented)")
     args = parser.parse_args(argv, namespace=_CliArgs())
@@ -219,6 +282,13 @@ def main(argv: list[str] | None = None) -> int:
             scenario=str(args.scenario),
             features=str(args.features),
             output_dir=str(args.output_dir),
+        )
+    if cmd == "run-backtest":
+        return run_backtest_command(
+            dataset=str(args.dataset),
+            scenario=str(args.scenario),
+            output_dir=str(args.output_dir),
+            folds_config=str(args.folds_config),
         )
     print(f"{cmd}: not yet implemented")
     return 0

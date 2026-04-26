@@ -17,6 +17,7 @@ from kospi_decision_pipeline_app_kr_kospi.cli import (
     fixtures_root,
     main,
     parse_date,
+    run_backtest_command,
     run_build_features_command,
     run_ingest_command,
     run_scenario_command,
@@ -443,6 +444,42 @@ def test_cli_main_routes_run_scenario_args(monkeypatch: pytest.MonkeyPatch) -> N
     }
 
 
+def test_cli_main_routes_run_backtest_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_backtest_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_backtest_command",
+        fake_run_backtest_command,
+    )
+
+    assert (
+        main(
+            [
+                "run-backtest",
+                "--dataset",
+                "data/gold/backtest_dataset.parquet",
+                "--scenario",
+                "apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+                "--out",
+                "data/backtest/run-1",
+                "--folds-config",
+                "config/folds.yaml",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "dataset": "data/gold/backtest_dataset.parquet",
+        "scenario": "apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+        "output_dir": "data/backtest/run-1",
+        "folds_config": "config/folds.yaml",
+    }
+
+
 def test_run_build_features_command_writes_silver_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -539,6 +576,81 @@ def test_run_scenario_command_returns_zero_after_execution(monkeypatch: pytest.M
         "features_path": Path("data/gold/features.parquet"),
         "output_dir": Path("data/decisions"),
     }
+
+
+def test_run_backtest_command_returns_zero_after_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, *, splitter: object, scenario_path: Path, output_dir: Path) -> None:
+            captured.update(
+                {
+                    "splitter": splitter,
+                    "scenario_path": scenario_path,
+                    "output_dir": output_dir,
+                }
+            )
+
+        def run(self, *, dataset_path: Path) -> object:
+            captured["dataset_path"] = dataset_path
+            return object()
+
+    monkeypatch.setattr("kospi_decision_pipeline_app_kr_kospi.cli.BacktestRunner", FakeRunner)
+
+    assert (
+        run_backtest_command(
+            dataset="data/gold/backtest_dataset.parquet",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            output_dir="data/backtest/run-1",
+            folds_config="",
+        )
+        == 0
+    )
+    assert captured["scenario_path"] == Path("apps/kr-kospi/config/scenario.kospi.next_day.yaml")
+    assert captured["output_dir"] == Path("data/backtest/run-1")
+    assert captured["dataset_path"] == Path("data/gold/backtest_dataset.parquet")
+
+
+def test_run_backtest_command_validates_folds_config(tmp_path: Path) -> None:
+    invalid_path = tmp_path / "folds.yaml"
+    _ = invalid_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="folds config must be a mapping"):
+        _ = run_backtest_command(
+            dataset="data/gold/backtest_dataset.parquet",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            output_dir="data/backtest/run-1",
+            folds_config=str(invalid_path),
+        )
+
+    _ = invalid_path.write_text(
+        "min_train_rows: true\ntest_fold_size: 2\ngap_days: 0\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="min_train_rows must be an int"):
+        _ = run_backtest_command(
+            dataset="data/gold/backtest_dataset.parquet",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            output_dir="data/backtest/run-1",
+            folds_config=str(invalid_path),
+        )
+
+    _ = invalid_path.write_text("min_train_rows: 2\ntest_fold_size: 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="missing required key: gap_days"):
+        _ = run_backtest_command(
+            dataset="data/gold/backtest_dataset.parquet",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            output_dir="data/backtest/run-1",
+            folds_config=str(invalid_path),
+        )
+
+    _ = invalid_path.write_text("1: 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="folds config keys must be strings"):
+        _ = run_backtest_command(
+            dataset="data/gold/backtest_dataset.parquet",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            output_dir="data/backtest/run-1",
+            folds_config=str(invalid_path),
+        )
 
 
 def test_parse_date_and_fixture_root_helpers() -> None:

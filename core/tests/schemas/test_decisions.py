@@ -8,10 +8,8 @@ import pytest
 
 from kospi_decision_pipeline_core.schemas.decisions import (
     AgentVote,
-    BacktestRow,
     DecisionResult,
     EvidenceItem,
-    GroundTruthLabel,
     ModelLabel,
 )
 
@@ -84,24 +82,6 @@ def test_decision_result_construction_and_immutability() -> None:
         setattr(decision, "votes", ())
 
 
-def test_backtest_row_construction_and_immutability() -> None:
-    row = BacktestRow(
-        decision_date=date(2026, 4, 25),
-        label="down",
-        aggregate_score=-0.41,
-        ground_truth="down",
-        next_day_return=-0.018,
-        hit=True,
-    )
-
-    assert row.ground_truth == "down"
-    assert row.next_day_return == -0.018
-    assert row.hit is True
-
-    with pytest.raises(AttributeError):
-        setattr(row, "hit", False)
-
-
 @pytest.mark.parametrize(
     ("factory", "match"),
     [
@@ -116,17 +96,6 @@ def test_backtest_row_construction_and_immutability() -> None:
                 evidence=(make_evidence_item(),),
             ),
             "label must be one of",
-        ),
-        (
-            lambda: BacktestRow(
-                decision_date=date(2026, 4, 25),
-                label="skip",
-                aggregate_score=0.0,
-                ground_truth=cast(GroundTruthLabel, cast(object, "skip")),
-                next_day_return=0.0,
-                hit=False,
-            ),
-            "ground_truth must be one of",
         ),
         (
             lambda: DecisionResult(
@@ -226,17 +195,6 @@ def test_decision_result_rejects_non_tuple_votes() -> None:
                 snapshot_id="snapshot:2026-04-25",
             ),
             "threshold_up must be greater than threshold_down",
-        ),
-        (
-            lambda: BacktestRow(
-                decision_date=date(2026, 4, 25),
-                label="down",
-                aggregate_score=-0.41,
-                ground_truth="down",
-                next_day_return=-0.018,
-                hit=cast(bool, cast(object, 1)),
-            ),
-            "hit must be a bool",
         ),
         (
             lambda: AgentVote(

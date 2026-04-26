@@ -6,9 +6,9 @@ from .config import (
     ScenarioConfig,
     ThresholdsConfig,
 )
+from .backtest import BacktestRow, FoldMetrics, OverallMetrics
 from .decisions import (
     AgentVote,
-    BacktestRow,
     DecisionRecord,
     DecisionResult,
     EvidenceItem,
@@ -29,9 +29,11 @@ __all__ = [
     "DecisionResult",
     "EvidenceItem",
     "FeatureRecord",
+    "FoldMetrics",
     "GroundTruthLabel",
     "from_jsonl_line",
     "ModelLabel",
+    "OverallMetrics",
     "ScenarioRuntimeConfig",
     "ScenarioConfig",
     "ThresholdsConfig",

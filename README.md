@@ -228,10 +228,11 @@ uv run --python 3.12 kospi-pipeline run-backtest \
 ### Nightly workflow and secret setup
 
 - GitHub Actions workflow: `.github/workflows/live-smoke.yml`
-- Required secret for full live smoke: `ECOS_API_KEY`
-- Optional bronze-only secret: `KOSIS_API_KEY`
+- `ECOS_API_KEY` is required for the full live path.
+- `KOSIS_API_KEY` is optional and only enables the bronze-only KOSIS ingest path in v0.2.
 - When `ECOS_API_KEY` is missing, the workflow prints a warning and falls back to fixture-backed CLI smoke (`ingest`, `build-features`, `run`, `run-backtest`) instead of failing silently.
 - When `KOSIS_API_KEY` is missing, the workflow still runs KRX + ECOS + Silver/Gold + runtime smoke and prints that KOSIS was skipped.
+- The acceptance text may say `backtest` informally, but the shipped CLI command used by the workflow is `run-backtest`.
 - Upstream auth failures, schema drift, and missing required inputs are intentionally loud because each workflow shell step runs with `set -euo pipefail` and explicit step headers.
 
 ### Expected outputs

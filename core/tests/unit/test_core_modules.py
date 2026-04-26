@@ -3,7 +3,12 @@ from __future__ import annotations
 from kospi_decision_pipeline_core import __version__
 from kospi_decision_pipeline_core.ids import dataset_id
 from kospi_decision_pipeline_core.io import ensure_directory
-from kospi_decision_pipeline_core.schemas import DecisionRecord, FeatureRecord, ScenarioConfig
+from kospi_decision_pipeline_core.schemas import (
+    DecisionRecord,
+    FeatureRecord,
+    ScenarioConfig,
+    ScenarioRuntimeConfig,
+)
 from kospi_decision_pipeline_core.types import Decision
 
 
@@ -37,6 +42,11 @@ def test_schema_stubs_are_instantiable() -> None:
             scenario_id="kospi.next_day",
             horizon="next_day",
             agents=("technical", "decision"),
+            runtime=ScenarioRuntimeConfig(
+                agents_config_path="apps/kr-kospi/config/agents.yaml",
+                features_path="data/gold/features.parquet",
+                output_dir="data/decisions",
+            ),
         ),
         ScenarioConfig,
     )

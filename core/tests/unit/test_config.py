@@ -11,6 +11,7 @@ from kospi_decision_pipeline_core.schemas.config import (
     AgentRuleConfig,
     AgentWeightConfig,
     AgentsConfig,
+    ScenarioRuntimeConfig,
     ScenarioConfig,
     ThresholdsConfig,
     load_agents_config,
@@ -112,6 +113,14 @@ def valid_agent_rules() -> dict[str, AgentRuleConfig]:
     }
 
 
+def valid_runtime_payload() -> dict[str, str]:
+    return {
+        "agents_config_path": "apps/kr-kospi/config/agents.yaml",
+        "features_path": "data/gold/features.parquet",
+        "output_dir": "data/decisions",
+    }
+
+
 def test_config_dataclasses_construct_and_serialize() -> None:
     weights = AgentWeightConfig(
         {
@@ -139,6 +148,7 @@ def test_config_dataclasses_construct_and_serialize() -> None:
             "volatility",
             "decision",
         ),
+        runtime=ScenarioRuntimeConfig(**valid_runtime_payload()),
     )
 
     assert config.to_dict() == {
@@ -163,6 +173,7 @@ def test_config_dataclasses_construct_and_serialize() -> None:
             "volatility",
             "decision",
         ],
+        "runtime": valid_runtime_payload(),
     }
 
 
@@ -230,6 +241,7 @@ def test_scenario_config_rejects_invalid_horizon_when_constructed_directly() -> 
             scenario_id="kospi.weekly",
             horizon=cast(Literal["next_day"], cast(object, "weekly")),
             agents=("technical", "decision"),
+            runtime=ScenarioRuntimeConfig(**valid_runtime_payload()),
         )
 
 
@@ -239,6 +251,40 @@ def test_scenario_config_rejects_non_string_scenario_id_when_constructed_directl
             scenario_id=cast(str, cast(object, 1)),
             horizon="next_day",
             agents=("technical", "decision"),
+            runtime=ScenarioRuntimeConfig(**valid_runtime_payload()),
+        )
+
+
+def test_scenario_runtime_config_rejects_empty_values() -> None:
+    with pytest.raises(ValueError, match="agents_config_path must be a non-empty string"):
+        _ = ScenarioRuntimeConfig(
+            agents_config_path="",
+            features_path="data/gold/features.parquet",
+            output_dir="data/decisions",
+        )
+
+    with pytest.raises(ValueError, match="features_path must be a non-empty string"):
+        _ = ScenarioRuntimeConfig(
+            agents_config_path="apps/kr-kospi/config/agents.yaml",
+            features_path="",
+            output_dir="data/decisions",
+        )
+
+    with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
+        _ = ScenarioRuntimeConfig(
+            agents_config_path="apps/kr-kospi/config/agents.yaml",
+            features_path="data/gold/features.parquet",
+            output_dir="",
+        )
+
+
+def test_scenario_config_rejects_non_runtime_config_instance() -> None:
+    with pytest.raises(ValueError, match="runtime must be a ScenarioRuntimeConfig"):
+        _ = ScenarioConfig(
+            scenario_id="kospi.next_day",
+            horizon="next_day",
+            agents=("technical", "decision"),
+            runtime=cast(ScenarioRuntimeConfig, cast(object, "invalid")),
         )
 
 
@@ -283,6 +329,7 @@ def test_load_scenario_config_rejects_invalid_horizon(tmp_path: Path) -> None:
             "scenario_id": "kospi.weekly",
             "horizon": "weekly",
             "agents": ["technical", "decision"],
+            "runtime": valid_runtime_payload(),
         },
     )
 
@@ -297,6 +344,7 @@ def test_load_scenario_config_rejects_unknown_agent_ids(tmp_path: Path) -> None:
             "scenario_id": "kospi.next_day",
             "horizon": "next_day",
             "agents": ["technical", "mystery"],
+            "runtime": valid_runtime_payload(),
         },
     )
 
@@ -442,6 +490,7 @@ def test_load_scenario_config_rejects_non_string_scenario_id(tmp_path: Path) -> 
             "scenario_id": 1,
             "horizon": "next_day",
             "agents": ["technical", "decision"],
+            "runtime": valid_runtime_payload(),
         },
     )
 
@@ -455,6 +504,7 @@ def test_load_scenario_config_rejects_missing_scenario_id(tmp_path: Path) -> Non
         {
             "horizon": "next_day",
             "agents": ["technical", "decision"],
+            "runtime": valid_runtime_payload(),
         },
     )
 
@@ -469,6 +519,7 @@ def test_load_scenario_config_rejects_non_sequence_agents(tmp_path: Path) -> Non
             "scenario_id": "kospi.next_day",
             "horizon": "next_day",
             "agents": "technical",
+            "runtime": valid_runtime_payload(),
         },
     )
 
@@ -487,7 +538,11 @@ def test_load_scenario_config_rejects_non_sequence_agents(tmp_path: Path) -> Non
         ),
         (
             "scenario.yaml",
-            {"scenario_id": "kospi.next_day", "horizon": "next_day"},
+            {
+                "scenario_id": "kospi.next_day",
+                "horizon": "next_day",
+                "runtime": valid_runtime_payload(),
+            },
             load_scenario_config,
             "agents",
         ),
@@ -546,4 +601,36 @@ def test_default_config_files_load_successfully() -> None:
             "volatility",
             "decision",
         ],
+        "runtime": valid_runtime_payload(),
     }
+
+
+def test_load_scenario_config_rejects_missing_runtime_block(tmp_path: Path) -> None:
+    config_path = write_yaml(
+        tmp_path / "scenario.yaml",
+        {
+            "scenario_id": "kospi.next_day",
+            "horizon": "next_day",
+            "agents": ["technical", "decision"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="runtime"):
+        _ = load_scenario_config(config_path)
+
+
+def test_load_scenario_config_rejects_missing_runtime_key(tmp_path: Path) -> None:
+    runtime = valid_runtime_payload()
+    del runtime["features_path"]
+    config_path = write_yaml(
+        tmp_path / "scenario.yaml",
+        {
+            "scenario_id": "kospi.next_day",
+            "horizon": "next_day",
+            "agents": ["technical", "decision"],
+            "runtime": runtime,
+        },
+    )
+
+    with pytest.raises(ValueError, match="features_path"):
+        _ = load_scenario_config(config_path)

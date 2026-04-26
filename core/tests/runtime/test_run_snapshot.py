@@ -185,6 +185,17 @@ def test_run_kospi_snapshot_writes_all_runnable_days_and_uses_config_thresholds(
     assert (tmp_path / "out" / "kospi.next_day" / "2025-02-17.jsonl").is_file()
 
 
+def test_run_kospi_snapshot_skips_exchange_holidays_in_decision_dates(tmp_path: Path) -> None:
+    _write_yaml(tmp_path / "config" / "agents.yaml", _agents_payload())
+    scenario_path = _write_yaml(tmp_path / "config" / "scenario.yaml", _scenario_payload(tmp_path))
+    features_path = tmp_path / "data" / "gold" / "features.parquet"
+    _write_features(features_path, [_feature_row(date(2025, 5, 2))])
+
+    results = run_kospi_snapshot(scenario_path, features_path, tmp_path / "out")
+
+    assert tuple(result.decision_date for result in results) == (date(2025, 5, 7),)
+
+
 def test_run_kospi_snapshot_rejects_forbidden_runtime_columns(tmp_path: Path) -> None:
     _write_yaml(tmp_path / "config" / "agents.yaml", _agents_payload())
     scenario_path = _write_yaml(tmp_path / "config" / "scenario.yaml", _scenario_payload(tmp_path))
@@ -247,6 +258,19 @@ def test_run_kospi_snapshot_validates_runtime_decision_date_types(tmp_path: Path
         _ = run_kospi_snapshot(scenario_path, features_path, tmp_path / "out")
 
 
+def test_run_kospi_snapshot_rejects_decision_date_only_rows(tmp_path: Path) -> None:
+    _write_yaml(tmp_path / "config" / "agents.yaml", _agents_payload())
+    scenario_path = _write_yaml(tmp_path / "config" / "scenario.yaml", _scenario_payload(tmp_path))
+    features_path = tmp_path / "data" / "gold" / "features.parquet"
+    row = _feature_row(date(2025, 2, 13))
+    del row["as_of_date"]
+    row["decision_date"] = date(2025, 2, 14)
+    _write_features(features_path, [row])
+
+    with pytest.raises(ValueError, match="must include provenance as_of_date or trade_date"):
+        _ = run_kospi_snapshot(scenario_path, features_path, tmp_path / "out")
+
+
 def test_run_kospi_snapshot_requires_as_of_or_decision_date(tmp_path: Path) -> None:
     _write_yaml(tmp_path / "config" / "agents.yaml", _agents_payload())
     scenario_path = _write_yaml(tmp_path / "config" / "scenario.yaml", _scenario_payload(tmp_path))
@@ -257,3 +281,16 @@ def test_run_kospi_snapshot_requires_as_of_or_decision_date(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="must include as_of_date or decision_date"):
         _ = run_kospi_snapshot(scenario_path, features_path, tmp_path / "out")
+
+
+def test_run_kospi_snapshot_preserves_explicit_snapshot_id(tmp_path: Path) -> None:
+    _write_yaml(tmp_path / "config" / "agents.yaml", _agents_payload())
+    scenario_path = _write_yaml(tmp_path / "config" / "scenario.yaml", _scenario_payload(tmp_path))
+    features_path = tmp_path / "data" / "gold" / "features.parquet"
+    row = _feature_row(date(2025, 2, 13))
+    row["snapshot_id"] = "gold-snapshot-2025-02-13"
+    _write_features(features_path, [row])
+
+    results = run_kospi_snapshot(scenario_path, features_path, tmp_path / "out")
+
+    assert tuple(result.snapshot_id for result in results) == ("gold-snapshot-2025-02-13",)

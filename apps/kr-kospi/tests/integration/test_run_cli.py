@@ -7,6 +7,7 @@ from typing import Protocol, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import yaml
 
 from kospi_decision_pipeline_app_kr_kospi.cli import main
 from kospi_decision_pipeline_app_kr_kospi.transforms.calendar import TradingCalendar
@@ -155,11 +156,24 @@ def _decision_outputs(root: Path) -> dict[str, str]:
     }
 
 
-def _next_weekday(current_date: date) -> date:
+def _next_trading_day(current_date: date) -> date:
+    calendar = TradingCalendar()
     candidate = current_date + timedelta(days=1)
-    while candidate.weekday() >= 5:
+    while not calendar.is_trading_day(candidate):
         candidate += timedelta(days=1)
     return candidate
+
+
+def _write_yaml(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+def _load_yaml(path: Path) -> dict[str, object]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise AssertionError("expected mapping YAML payload")
+    return cast(dict[str, object], loaded)
 
 
 def test_run_cli_executes_gold_fixture_window_deterministically(tmp_path: Path) -> None:
@@ -205,7 +219,7 @@ def test_run_cli_executes_gold_fixture_window_deterministically(tmp_path: Path) 
 
     first_outputs = _decision_outputs(first_output)
     second_outputs = _decision_outputs(second_output)
-    expected_decision_dates = [_next_weekday(day).isoformat() for day in days[-3:]]
+    expected_decision_dates = [_next_trading_day(day).isoformat() for day in days[-3:]]
     assert first_outputs == second_outputs
     assert tuple(first_outputs) == tuple(
         f"{decision_date}.jsonl" for decision_date in expected_decision_dates
@@ -223,3 +237,84 @@ def test_run_cli_executes_gold_fixture_window_deterministically(tmp_path: Path) 
         == ("domestic_macro", "flow", "technical", "valuation", "volatility")
         for result in parsed
     )
+
+
+def test_run_cli_uses_agents_yaml_thresholds_for_batch_output(tmp_path: Path) -> None:
+    days = _trading_days(274)
+    silver_root = tmp_path / "silver"
+    _build_complete_silver_history(silver_root, days)
+    features_path = GoldFeatureBuilder(output_root=tmp_path / "gold").build(
+        silver_root=silver_root,
+        start=days[-1],
+        end=days[-1],
+    )
+    scenario_path = tmp_path / "scenario.yaml"
+    agents_path = tmp_path / "agents.yaml"
+    output_root = tmp_path / "decisions"
+    _write_yaml(
+        scenario_path,
+        {
+            "scenario_id": "kospi.next_day",
+            "horizon": "next_day",
+            "agents": [
+                "technical",
+                "domestic_macro",
+                "flow",
+                "valuation",
+                "volatility",
+                "decision",
+            ],
+            "runtime": {
+                "agents_config_path": str(agents_path),
+                "features_path": str(features_path),
+                "output_dir": str(output_root),
+            },
+        },
+    )
+    _write_yaml(agents_path, _load_yaml(REPO_ROOT / "apps" / "kr-kospi" / "config" / "agents.yaml"))
+
+    assert (
+        main(
+            [
+                "run",
+                "--scenario",
+                str(scenario_path),
+                "--features",
+                str(features_path),
+                "--out",
+                str(output_root / "default"),
+            ]
+        )
+        == 0
+    )
+
+    agents_payload = _load_yaml(agents_path)
+    thresholds = cast(dict[str, object], agents_payload["thresholds"])
+    thresholds["up"] = 1.0
+    _write_yaml(agents_path, agents_payload)
+
+    assert (
+        main(
+            [
+                "run",
+                "--scenario",
+                str(scenario_path),
+                "--features",
+                str(features_path),
+                "--out",
+                str(output_root / "mutated"),
+            ]
+        )
+        == 0
+    )
+
+    default_result = parse_decision_result(
+        next(iter(_decision_outputs(output_root / "default").values())).strip()
+    )
+    mutated_result = parse_decision_result(
+        next(iter(_decision_outputs(output_root / "mutated").values())).strip()
+    )
+    assert default_result.label == "up"
+    assert mutated_result.label == "skip"
+    assert default_result.threshold_up == 0.25
+    assert mutated_result.threshold_up == 1.0

@@ -19,6 +19,7 @@ from kospi_decision_pipeline_app_kr_kospi.cli import (
     parse_date,
     run_build_features_command,
     run_ingest_command,
+    run_scenario_command,
 )
 from kospi_decision_pipeline_app_kr_kospi.ingest.bronze import (
     BronzeIngestor,
@@ -406,6 +407,42 @@ def test_cli_main_routes_build_features_gold_args(monkeypatch: pytest.MonkeyPatc
     }
 
 
+def test_cli_main_routes_run_scenario_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_scenario_command(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_scenario_command",
+        fake_run_scenario_command,
+    )
+
+    assert (
+        main(
+            [
+                "run-scenario",
+                "--date",
+                "2025-02-14",
+                "--scenario",
+                "apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+                "--features",
+                "data/gold/features.parquet",
+                "--out",
+                "data/decisions",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "decision_date": "2025-02-14",
+        "scenario": "apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+        "features": "data/gold/features.parquet",
+        "output_dir": "data/decisions",
+    }
+
+
 def test_run_build_features_command_writes_silver_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -461,6 +498,47 @@ def test_run_build_features_command_rejects_unsupported_layer() -> None:
             silver_dir="tmp/silver",
             output_dir="tmp/output",
         )
+
+
+def test_run_scenario_command_returns_zero_after_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_kospi_scenario(
+        scenario_path: Path,
+        decision_date: date,
+        features_path: Path | None,
+        output_dir: Path | None,
+    ) -> object:
+        captured.update(
+            {
+                "scenario_path": scenario_path,
+                "decision_date": decision_date,
+                "features_path": features_path,
+                "output_dir": output_dir,
+            }
+        )
+        return object()
+
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.cli.run_kospi_scenario",
+        fake_run_kospi_scenario,
+    )
+
+    assert (
+        run_scenario_command(
+            decision_date="2025-02-14",
+            scenario="apps/kr-kospi/config/scenario.kospi.next_day.yaml",
+            features="data/gold/features.parquet",
+            output_dir="data/decisions",
+        )
+        == 0
+    )
+    assert captured == {
+        "scenario_path": Path("apps/kr-kospi/config/scenario.kospi.next_day.yaml"),
+        "decision_date": date(2025, 2, 14),
+        "features_path": Path("data/gold/features.parquet"),
+        "output_dir": Path("data/decisions"),
+    }
 
 
 def test_parse_date_and_fixture_root_helpers() -> None:

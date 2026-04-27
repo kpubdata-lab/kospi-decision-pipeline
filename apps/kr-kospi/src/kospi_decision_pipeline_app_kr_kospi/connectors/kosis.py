@@ -1,19 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
-import os
-from typing import Callable, Mapping, Protocol, cast, final, runtime_checkable
-from urllib.parse import urlencode
+from typing import Protocol, cast, final, runtime_checkable
 
-import httpx
+from kpubdata import Client
+from kpubdata.core.models import Query
+from kpubdata.exceptions import DatasetNotFoundError
 
-from ._http import HttpRequestError, HttpRetryPolicy, SyncHttpRequester
-from ._secrets import resolve_live_api_key
-from .base import ConnectorRowBase
-from .base import SourceMetadata
+from .base import ConnectorRowBase, SourceMetadata
 
 
 class UnsupportedDatasetError(ValueError):
@@ -46,72 +44,23 @@ class KosisConnector(Protocol):
     ) -> tuple[KosisMacroIndicatorRow, ...]: ...
 
 
-_KOSIS_API_BASE_URL = "https://kosis.kr"
-_KOSIS_API_PATH = "/openapi/Param/statisticsParameterData.do"
-_KOSIS_API_METHOD = "getList"
-_KOSIS_API_FORMAT = "json"
-_KOSIS_JSON_VD = "Y"
 _KOSIS_API_VERSION = "getList"
 _LIVE_CONNECTOR_ID = "kospi_decision_pipeline_app_kr_kospi.connectors.kosis.LiveKosisConnector"
 
 
-@dataclass(frozen=True, slots=True)
-class _KosisSeriesDefinition:
-    dataset_name: str
-    org_id: str
-    table_id: str
-    item_id: str
-    object_level_1: str
-    period_type: str
-    series_name: str
-    unit: str
-
-
-_MACRO_INDICATORS_SERIES = _KosisSeriesDefinition(
-    dataset_name="macro_indicators",
-    org_id="101",
-    table_id="DT_1J22003",
-    item_id="T",
-    object_level_1="T10",
-    period_type="M",
-    series_name="T10",
-    unit="",
-)
+class _BatchLike(Protocol):
+    items: Sequence[Mapping[str, object]]
 
 
 @final
 class LiveKosisConnector:
-    _api_key: str
-    _key_fingerprint_sha256: str
-    _http_requester: SyncHttpRequester
-    _environment: Mapping[str, str]
-    _transport: httpx.BaseTransport | None
+    _client: Client
+    _key_fingerprint_sha256: str | None
     _now: Callable[[], datetime]
 
-    def __init__(
-        self,
-        api_key: str | None = None,
-        *,
-        environment: Mapping[str, str] | None = None,
-        transport: httpx.BaseTransport | None = None,
-        retry_policy: HttpRetryPolicy | None = None,
-        sleep: Callable[[float], None] | None = None,
-        now: Callable[[], datetime] | None = None,
-    ) -> None:
-        self._environment = environment or os.environ
-        self._api_key = cast(
-            str,
-            resolve_live_api_key(
-                source="kosis",
-                api_key=api_key,
-                environment=self._environment,
-            ),
-        )
-        self._key_fingerprint_sha256 = hashlib.sha256(self._api_key.encode("utf-8")).hexdigest()[
-            :16
-        ]
-        self._http_requester = SyncHttpRequester(retry_policy, sleep=sleep or _default_sleep)
-        self._transport = transport
+    def __init__(self, *, client: Client, now: Callable[[], datetime] | None = None) -> None:
+        self._client = client
+        self._key_fingerprint_sha256 = _provider_key_fingerprint_sha256(client, "kosis")
         self._now = now or _utc_now
 
     def fetch_per_pbr_percentiles(self, start: date, end: date) -> tuple[PerPbrPercentileRow, ...]:
@@ -122,43 +71,24 @@ class LiveKosisConnector:
         )
 
     def fetch_macro_indicators(self, start: date, end: date) -> tuple[KosisMacroIndicatorRow, ...]:
-        payload = self._fetch_payload(_MACRO_INDICATORS_SERIES, start, end)
+        try:
+            batch = _query_record_batch(
+                dataset=self._client.dataset("kosis.industrial_production"),
+                query=Query(start_date=start.isoformat(), end_date=end.isoformat()),
+            )
+        except DatasetNotFoundError as error:
+            raise UnsupportedDatasetError(
+                "KOSIS live ingest requires kpubdata dataset kosis.industrial_production"
+            ) from error
+
         return parse_macro_indicator_rows(
-            payload=payload,
-            dataset_name=_MACRO_INDICATORS_SERIES.dataset_name,
+            payload=batch.items,
+            dataset_name="macro_indicators",
             fetched_at_utc=self._fetched_at_utc(),
             key_fingerprint_sha256=self._key_fingerprint_sha256,
-            series_name=_MACRO_INDICATORS_SERIES.series_name,
-            unit=_MACRO_INDICATORS_SERIES.unit,
+            series_name="T10",
+            unit="",
         )
-
-    def _fetch_payload(self, definition: _KosisSeriesDefinition, start: date, end: date) -> object:
-        params = {
-            "method": _KOSIS_API_METHOD,
-            "apiKey": self._api_key,
-            "format": _KOSIS_API_FORMAT,
-            "jsonVD": _KOSIS_JSON_VD,
-            "orgId": definition.org_id,
-            "tblId": definition.table_id,
-            "itmId": definition.item_id,
-            "objL1": definition.object_level_1,
-            "prdSe": definition.period_type,
-            "startPrdDe": _format_period(start, definition.period_type),
-            "endPrdDe": _format_period(end, definition.period_type),
-        }
-        path = f"{_KOSIS_API_PATH}?{urlencode(params)}"
-        try:
-            with httpx.Client(
-                base_url=_KOSIS_API_BASE_URL,
-                timeout=httpx.Timeout(self._http_requester.retry_policy.timeout_seconds),
-                transport=self._transport,
-            ) as client:
-                return self._http_requester.get(client, path)
-        except HttpRequestError as error:
-            message = str(error)
-            if message.startswith("HTTP 401") or message.startswith("HTTP 403"):
-                raise PermissionError(f"KOSIS authentication failed: {message}") from error
-            raise
 
     def _fetched_at_utc(self) -> str:
         return self._now().replace(microsecond=0).isoformat()
@@ -169,7 +99,7 @@ def parse_macro_indicator_rows(
     payload: object,
     dataset_name: str,
     fetched_at_utc: str,
-    key_fingerprint_sha256: str,
+    key_fingerprint_sha256: str | None,
     series_name: str,
     unit: str,
 ) -> tuple[KosisMacroIndicatorRow, ...]:
@@ -191,7 +121,9 @@ def parse_macro_indicator_rows(
 
 
 def _source_metadata(
-    dataset_name: str, fetched_at_utc: str, key_fingerprint_sha256: str
+    dataset_name: str,
+    fetched_at_utc: str,
+    key_fingerprint_sha256: str | None,
 ) -> SourceMetadata:
     return SourceMetadata(
         source_name="kosis",
@@ -204,13 +136,14 @@ def _source_metadata(
 
 
 def _kosis_rows(payload: object) -> tuple[Mapping[str, object], ...]:
-    if not isinstance(payload, list):
-        raise ValueError("KOSIS payload must be a JSON array")
+    if not isinstance(payload, Sequence) or isinstance(payload, str | bytes | bytearray):
+        raise ValueError("KOSIS record batch payload must be a sequence")
+    raw_payload = cast(Sequence[object], payload)
     rows: list[Mapping[str, object]] = []
-    for raw_row in cast(list[object], payload):
-        if not isinstance(raw_row, dict):
-            raise ValueError("KOSIS row payload must be a JSON object")
-        rows.append(cast(dict[str, object], raw_row))
+    for raw_row in raw_payload:
+        if not isinstance(raw_row, Mapping):
+            raise ValueError("KOSIS record payload must be an object")
+        rows.append(cast(Mapping[str, object], raw_row))
     return tuple(rows)
 
 
@@ -236,17 +169,45 @@ def _parse_kosis_period(value: str) -> date:
     return date.fromisoformat(f"{value[0:4]}-{value[4:6]}-01")
 
 
-def _format_period(value: date, period_type: str) -> str:
-    if period_type != "M":
-        raise ValueError(f"unsupported KOSIS period type: {period_type}")
-    return value.strftime("%Y%m")
+def _provider_key_fingerprint_sha256(client: Client, provider: str) -> str | None:
+    provider_keys = _provider_keys(client)
+    if provider_keys is None:
+        return None
+    provider_key = provider_keys.get(provider)
+    if not isinstance(provider_key, str) or provider_key == "":
+        return None
+    return hashlib.sha256(provider_key.encode("utf-8")).hexdigest()[:16]
+
+
+def _provider_keys(client: Client) -> Mapping[str, str] | None:
+    config = getattr(client, "_config", None)
+    if config is None:
+        return None
+    provider_keys = getattr(config, "provider_keys", None)
+    if not isinstance(provider_keys, Mapping):
+        return None
+    typed_provider_keys = cast(Mapping[object, object], provider_keys)
+    typed_items: list[tuple[str, str]] = []
+    for key, value in typed_provider_keys.items():
+        if isinstance(key, str) and isinstance(value, str):
+            typed_items.append((key, value))
+    return dict(typed_items)
+
+
+def _query_record_batch(dataset: object, query: Query) -> _BatchLike:
+    query_records = getattr(dataset, "query_records", None)
+    if callable(query_records):
+        return cast(_BatchLike, query_records(query))
+
+    list_records = getattr(dataset, "list", None)
+    if callable(list_records):
+        return cast(
+            _BatchLike,
+            list_records(start_date=query.start_date, end_date=query.end_date),
+        )
+
+    raise TypeError("kpubdata dataset must provide query_records(Query) or list(...)")
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _default_sleep(seconds: float) -> None:
-    from time import sleep
-
-    sleep(seconds)

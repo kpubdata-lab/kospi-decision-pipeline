@@ -6,10 +6,11 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
-import httpx
 import pytest
+from kpubdata import Client
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import LiveEcosConnector
 from kospi_decision_pipeline_app_kr_kospi.connectors.kosis import LiveKosisConnector
@@ -18,6 +19,30 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.krx import PykrxKrxConnecto
 
 PARITY_FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "parity" / "v0.2"
 FETCHED_AT = datetime(2024, 2, 1, tzinfo=timezone.utc)
+PARITY_API_KEY = "parity-api-key"
+
+
+class _FakeRecordBatch:
+    def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
+        self.items = items
+
+
+class _FakeDataset:
+    def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
+        self._batch = _FakeRecordBatch(items)
+
+    def query_records(self, query: object) -> _FakeRecordBatch:
+        del query
+        return self._batch
+
+
+class _FakeClient:
+    def __init__(self, *, provider: str, datasets: Mapping[str, _FakeDataset]) -> None:
+        self._config = SimpleNamespace(provider_keys={provider: PARITY_API_KEY})
+        self._datasets = dict(datasets)
+
+    def dataset(self, dataset_id: str) -> _FakeDataset:
+        return self._datasets[dataset_id]
 
 
 class _FakeFrameIndex:
@@ -86,10 +111,6 @@ def _serialize(value: object) -> object:
     return value
 
 
-def _json_response(request: httpx.Request, payload: object) -> httpx.Response:
-    return httpx.Response(status_code=200, json=payload, request=request)
-
-
 def _frame_from_payload(payload: object) -> _FakeDataFrame:
     mapping = cast(dict[str, object], payload)
     raw_rows = cast(list[dict[str, object]], mapping["rows"])
@@ -109,6 +130,12 @@ def _extract_ohlcv_payload(payload: object) -> object:
             return ohlcv_payload
         return dict(mapping)
     return payload
+
+
+def _extract_ecos_records(payload: object) -> tuple[Mapping[str, object], ...]:
+    mapping = cast(Mapping[str, object], payload)
+    statistic_search = cast(Mapping[str, object], mapping["StatisticSearch"])
+    return tuple(cast(list[Mapping[str, object]], statistic_search.get("row", [])))
 
 
 class _ParityPykrxStockApi:
@@ -156,10 +183,17 @@ class _ParityPykrxStockApi:
 def _fetch_ecos_rows(snapshot_name: str, fetcher_name: str) -> list[object]:
     snapshot = _load_snapshot(snapshot_name)
     start, end = _load_window(snapshot)
-    payload = snapshot["raw"]
+    dataset_name = {
+        "fetch_base_rate_series": "bok.base_rate",
+        "fetch_usd_krw_series": "bok.usd_krw",
+        "fetch_bond_yield_series": "bok.bond_yield_3y",
+    }[fetcher_name]
+    client = _FakeClient(
+        provider="bok",
+        datasets={dataset_name: _FakeDataset(_extract_ecos_records(snapshot["raw"]))},
+    )
     connector = LiveEcosConnector(
-        api_key="parity-api-key",
-        transport=httpx.MockTransport(lambda request: _json_response(request, payload)),
+        client=cast(Client, client),
         now=lambda: FETCHED_AT,
     )
     return cast(list[object], list(getattr(connector, fetcher_name)(start, end)))
@@ -168,10 +202,13 @@ def _fetch_ecos_rows(snapshot_name: str, fetcher_name: str) -> list[object]:
 def _fetch_kosis_rows(snapshot_name: str) -> list[object]:
     snapshot = _load_snapshot(snapshot_name)
     start, end = _load_window(snapshot)
-    payload = snapshot["raw"]
+    payload = tuple(cast(list[Mapping[str, object]], snapshot["raw"]))
+    client = _FakeClient(
+        provider="kosis",
+        datasets={"kosis.industrial_production": _FakeDataset(payload)},
+    )
     connector = LiveKosisConnector(
-        api_key="parity-api-key",
-        transport=httpx.MockTransport(lambda request: _json_response(request, payload)),
+        client=cast(Client, client),
         now=lambda: FETCHED_AT,
     )
     return list(connector.fetch_macro_indicators(start, end))

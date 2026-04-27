@@ -115,7 +115,6 @@ def test_run_ingest_command_live_mode_is_idempotent_for_existing_snapshot_partit
             output_dir=str(tmp_path),
             live=True,
             snapshot_id="snapshot-20240115T000000Z",
-            api_key="cli-key",
             connector_registry=registry,
             deterministic_run_timestamp=RUN_TIMESTAMP,
         )
@@ -136,7 +135,6 @@ def test_run_ingest_command_live_mode_is_idempotent_for_existing_snapshot_partit
             output_dir=str(tmp_path),
             live=True,
             snapshot_id="snapshot-20240115T000000Z",
-            api_key="cli-key",
             connector_registry=registry,
             deterministic_run_timestamp=RUN_TIMESTAMP,
         )
@@ -147,7 +145,7 @@ def test_run_ingest_command_live_mode_is_idempotent_for_existing_snapshot_partit
         tmp_path / "snapshot-20240115T000000Z" / "ecos" / "base_rate" / "manifest.json"
     )
 
-    assert registry.calls == [("ecos", "cli-key"), ("ecos", "cli-key")]
+    assert registry.calls == [("ecos", None), ("ecos", None)]
     assert connector.requested_ranges == []
     assert isinstance(manifest, LiveIngestManifest)
     assert manifest.written_dates == ()
@@ -187,8 +185,6 @@ def test_cli_main_live_ingest_writes_snapshot_partition_layout(
             "2024-01-03",
             "--snapshot-id",
             "snapshot-20240115T000000Z",
-            "--api-key",
-            "cli-key",
             "--out",
             str(tmp_path),
         ]
@@ -199,7 +195,7 @@ def test_cli_main_live_ingest_writes_snapshot_partition_layout(
     )
 
     assert exit_code == 0
-    assert registry.calls == [("ecos", "cli-key")]
+    assert registry.calls == [("ecos", None)]
     assert connector.requested_ranges == [
         (date(2024, 1, 2), date(2024, 1, 2)),
         (date(2024, 1, 3), date(2024, 1, 3)),
@@ -235,8 +231,6 @@ def test_cli_main_fails_clearly_for_unsupported_live_kosis_dataset(
                 "2024-01-31",
                 "--snapshot-id",
                 "snapshot-20240115T000000Z",
-                "--api-key",
-                "cli-key",
                 "--out",
                 str(tmp_path),
             ]
@@ -247,7 +241,11 @@ def test_cli_main_fails_clearly_for_unsupported_live_kosis_dataset(
     assert "per_pbr_percentiles" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(os.getenv("KOSIS_API_KEY") is None, reason="KOSIS_API_KEY not set")
+@pytest.mark.requires_network
+@pytest.mark.skipif(
+    os.getenv("KPUBDATA_KOSIS_API_KEY") is None,
+    reason="KPUBDATA_KOSIS_API_KEY not set",
+)
 def test_run_ingest_command_live_kosis_writes_verified_bronze_partition(tmp_path: Path) -> None:
     assert (
         run_ingest_command(

@@ -32,7 +32,7 @@ def test_live_connector_registry_prefers_explicit_key_over_environment() -> None
         resolve_live_api_key(
             source="ecos",
             api_key="explicit-ecos-key",
-            environment={"ECOS_API_KEY": "env-ecos-key"},
+            environment={"KPUBDATA_BOK_API_KEY": "env-ecos-key"},
         )
         == "explicit-ecos-key"
     )
@@ -43,7 +43,7 @@ def test_live_connector_registry_reads_source_specific_environment_key() -> None
         resolve_live_api_key(
             source="ecos",
             api_key=None,
-            environment={"ECOS_API_KEY": "env-ecos-key"},
+            environment={"KPUBDATA_BOK_API_KEY": "env-ecos-key"},
         )
         == "env-ecos-key"
     )
@@ -71,20 +71,20 @@ def test_live_connector_registry_reads_kosis_environment_key() -> None:
         resolve_live_api_key(
             source="kosis",
             api_key=None,
-            environment={"KOSIS_API_KEY": "env-kosis-key"},
+            environment={"KPUBDATA_KOSIS_API_KEY": "env-kosis-key"},
         )
         == "env-kosis-key"
     )
 
 
 def test_live_connector_registry_passes_environment_to_live_kosis_connector() -> None:
-    registry = LiveConnectorRegistry(environment={"KOSIS_API_KEY": "env-kosis-key"})
+    registry = LiveConnectorRegistry(environment={"KPUBDATA_KOSIS_API_KEY": "env-kosis-key"})
 
     connector = registry.get_connector("kosis")
 
     environment = getattr(connector, "_environment")
     assert isinstance(environment, Mapping)
-    assert environment["KOSIS_API_KEY"] == "env-kosis-key"
+    assert environment["KPUBDATA_KOSIS_API_KEY"] == "env-kosis-key"
 
 
 def test_live_connector_registry_rejects_unknown_source() -> None:

@@ -84,7 +84,7 @@ def test_live_kosis_connector_uses_explicit_api_key_over_environment() -> None:
 
     connector = LiveKosisConnector(
         api_key="explicit-kosis-key",
-        environment={"KOSIS_API_KEY": "env-kosis-key"},
+        environment={"KPUBDATA_KOSIS_API_KEY": "env-kosis-key"},
         transport=httpx.MockTransport(handler),
         now=lambda: FETCHED_AT,
     )
@@ -94,7 +94,10 @@ def test_live_kosis_connector_uses_explicit_api_key_over_environment() -> None:
     assert rows[0].metadata.key_fingerprint_sha256 == expected_fingerprint
 
 
-def test_live_kosis_connector_requires_api_key_when_no_auth_source_exists() -> None:
+def test_live_kosis_connector_requires_api_key_when_no_auth_source_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KPUBDATA_KOSIS_API_KEY", raising=False)
     with pytest.raises(ValueError, match="KOSIS API key is required"):
         LiveKosisConnector(environment={})
 
@@ -187,7 +190,11 @@ def test_kosis_period_helpers_cover_supported_and_unsupported_paths(
     assert _utc_now().tzinfo == timezone.utc
 
 
-@pytest.mark.skipif(os.getenv("KOSIS_API_KEY") is None, reason="KOSIS_API_KEY not set")
+@pytest.mark.requires_network
+@pytest.mark.skipif(
+    os.getenv("KPUBDATA_KOSIS_API_KEY") is None,
+    reason="KPUBDATA_KOSIS_API_KEY not set",
+)
 def test_live_kosis_connector_smoke_fetches_verified_bronze_series() -> None:
     connector = LiveKosisConnector(now=lambda: FETCHED_AT)
 

@@ -106,7 +106,7 @@ def test_live_ecos_connector_prefers_explicit_api_key_over_environment() -> None
 
     connector = LiveEcosConnector(
         api_key="explicit-api-key",
-        environment={"ECOS_API_KEY": "env-api-key"},
+        environment={"KPUBDATA_BOK_API_KEY": "env-api-key"},
         transport=httpx.MockTransport(handler),
     )
 
@@ -115,7 +115,10 @@ def test_live_ecos_connector_prefers_explicit_api_key_over_environment() -> None
     assert rows
 
 
-def test_live_ecos_connector_requires_api_key_when_no_auth_source_exists() -> None:
+def test_live_ecos_connector_requires_api_key_when_no_auth_source_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KPUBDATA_BOK_API_KEY", raising=False)
     with pytest.raises(ValueError, match="ECOS API key"):
         LiveEcosConnector(environment={})
 
@@ -128,7 +131,7 @@ def test_live_ecos_connector_uses_environment_api_key() -> None:
         return _json_response(request, payload)
 
     connector = LiveEcosConnector(
-        environment={"ECOS_API_KEY": "env-api-key"},
+        environment={"KPUBDATA_BOK_API_KEY": "env-api-key"},
         transport=httpx.MockTransport(handler),
     )
 

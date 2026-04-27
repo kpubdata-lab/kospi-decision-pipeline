@@ -47,7 +47,6 @@ def run_ingest_command(
     output_dir: str,
     live: bool,
     snapshot_id: str | None = None,
-    api_key: str | None = None,
     connector_registry: ConnectorRegistry | None = None,
     deterministic_run_timestamp: datetime | None = None,
 ) -> int:
@@ -58,7 +57,7 @@ def run_ingest_command(
         else cast(ConnectorRegistry, FixtureConnectorRegistry(fixtures_root()))
     )
     connector = (
-        registry.get_connector(source, api_key=api_key)
+        registry.get_connector(source)
         if live_mode
         else cast(FixtureConnectorRegistry, registry).get_connector(source)
     )
@@ -262,7 +261,6 @@ class _CliArgs(argparse.Namespace):
     live: bool = False
     snapshot_id: str = ""
     snapshot_root: str = ""
-    api_key: str = ""
     agents: str = ""
 
 
@@ -284,7 +282,6 @@ def main(argv: list[str] | None = None) -> int:
     _ = ingest_parser.add_argument("--out", dest="output_dir", default="data/bronze")
     _ = ingest_parser.add_argument("--live", action="store_true")
     _ = ingest_parser.add_argument("--snapshot-id", default="")
-    _ = ingest_parser.add_argument("--api-key", default="")
     build_features_parser = sub.add_parser("build-features", help="build typed features")
     _ = build_features_parser.add_argument(
         "--layer", choices=("silver", "gold", "all"), required=True
@@ -357,7 +354,6 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=str(args.output_dir),
                 live=live_mode,
                 snapshot_id=str(args.snapshot_id) or None,
-                api_key=str(args.api_key) or None,
             )
         except UnsupportedDatasetError as error:
             print(str(error), file=sys.stderr)

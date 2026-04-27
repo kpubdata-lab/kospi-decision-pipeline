@@ -218,6 +218,7 @@ def test_cli_main_fails_clearly_for_unsupported_live_kosis_dataset(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("KPUBDATA_BOK_API_KEY", "test-bok-api-key")
     monkeypatch.setenv("KPUBDATA_KOSIS_API_KEY", "test-kosis-api-key")
 
     assert (

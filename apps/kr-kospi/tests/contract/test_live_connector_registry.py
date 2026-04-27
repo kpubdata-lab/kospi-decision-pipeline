@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 import pytest
 
-from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import LiveEcosConnector
-from kospi_decision_pipeline_app_kr_kospi.connectors.kosis import LiveKosisConnector
 from kospi_decision_pipeline_app_kr_kospi.connectors.krx import PykrxKrxConnector
-from kospi_decision_pipeline_app_kr_kospi.connectors.registry import (
-    LiveConnectorRegistry,
-    resolve_live_api_key,
-)
+from kospi_decision_pipeline_app_kr_kospi.connectors.registry import LiveConnectorRegistry
 
 
 def test_live_connector_registry_returns_pykrx_connector_for_krx() -> None:
@@ -19,76 +12,60 @@ def test_live_connector_registry_returns_pykrx_connector_for_krx() -> None:
     assert isinstance(registry.get_connector("krx"), PykrxKrxConnector)
 
 
-def test_live_connector_registry_returns_live_ecos_connector_with_explicit_api_key() -> None:
-    registry = LiveConnectorRegistry(environment={})
+def test_live_connector_registry_builds_client_for_ecos(monkeypatch: pytest.MonkeyPatch) -> None:
+    built_client = object()
+    observed: dict[str, object] = {}
 
-    connector = registry.get_connector("ecos", api_key="explicit-ecos-key")
-
-    assert isinstance(connector, LiveEcosConnector)
-
-
-def test_live_connector_registry_prefers_explicit_key_over_environment() -> None:
-    assert (
-        resolve_live_api_key(
-            source="ecos",
-            api_key="explicit-ecos-key",
-            environment={"KPUBDATA_BOK_API_KEY": "env-ecos-key"},
-        )
-        == "explicit-ecos-key"
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.connectors.registry.client_factory.build_client",
+        lambda: built_client,
     )
 
+    class _FakeEcosConnector:
+        def __init__(self, *, client: object) -> None:
+            observed["client"] = client
 
-def test_live_connector_registry_reads_source_specific_environment_key() -> None:
-    assert (
-        resolve_live_api_key(
-            source="ecos",
-            api_key=None,
-            environment={"KPUBDATA_BOK_API_KEY": "env-ecos-key"},
-        )
-        == "env-ecos-key"
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.connectors.registry.LiveEcosConnector",
+        _FakeEcosConnector,
     )
 
+    registry = LiveConnectorRegistry()
 
-def test_live_connector_registry_returns_none_for_sources_without_api_keys() -> None:
-    assert resolve_live_api_key(source="krx", api_key=None, environment={}) is None
+    connector = registry.get_connector("ecos")
 
-
-def test_live_connector_registry_rejects_missing_required_api_key() -> None:
-    with pytest.raises(ValueError, match="ECOS API key is required"):
-        _ = resolve_live_api_key(source="ecos", api_key=None, environment={})
+    assert isinstance(connector, _FakeEcosConnector)
+    assert observed == {"client": built_client}
 
 
-def test_live_connector_registry_returns_live_kosis_connector_with_explicit_api_key() -> None:
-    registry = LiveConnectorRegistry(environment={})
+def test_live_connector_registry_builds_client_for_kosis(monkeypatch: pytest.MonkeyPatch) -> None:
+    built_client = object()
+    observed: dict[str, object] = {}
 
-    connector = registry.get_connector("kosis", api_key="explicit-kosis-key")
-
-    assert isinstance(connector, LiveKosisConnector)
-
-
-def test_live_connector_registry_reads_kosis_environment_key() -> None:
-    assert (
-        resolve_live_api_key(
-            source="kosis",
-            api_key=None,
-            environment={"KPUBDATA_KOSIS_API_KEY": "env-kosis-key"},
-        )
-        == "env-kosis-key"
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.connectors.registry.client_factory.build_client",
+        lambda: built_client,
     )
 
+    class _FakeKosisConnector:
+        def __init__(self, *, client: object) -> None:
+            observed["client"] = client
 
-def test_live_connector_registry_passes_environment_to_live_kosis_connector() -> None:
-    registry = LiveConnectorRegistry(environment={"KPUBDATA_KOSIS_API_KEY": "env-kosis-key"})
+    monkeypatch.setattr(
+        "kospi_decision_pipeline_app_kr_kospi.connectors.registry.LiveKosisConnector",
+        _FakeKosisConnector,
+    )
+
+    registry = LiveConnectorRegistry()
 
     connector = registry.get_connector("kosis")
 
-    environment = getattr(connector, "_environment")
-    assert isinstance(environment, Mapping)
-    assert environment["KPUBDATA_KOSIS_API_KEY"] == "env-kosis-key"
+    assert isinstance(connector, _FakeKosisConnector)
+    assert observed == {"client": built_client}
 
 
 def test_live_connector_registry_rejects_unknown_source() -> None:
-    registry = LiveConnectorRegistry(environment={})
+    registry = LiveConnectorRegistry()
 
     with pytest.raises(ValueError, match="unsupported source"):
         registry.get_connector("missing")

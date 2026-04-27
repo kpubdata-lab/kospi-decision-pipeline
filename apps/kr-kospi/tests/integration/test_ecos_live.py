@@ -6,6 +6,7 @@ from decimal import Decimal
 import os
 
 import pytest
+from kpubdata import Client
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import (
     EcosBaseRateRow,
@@ -77,7 +78,7 @@ def test_live_ecos_connector_fetches_sorted_rows_for_all_series(
     fetcher: EcosFetcher,
     value_getter: Callable[[EcosBaseRateRow | EcosUsdKrwRow | EcosBondYieldRow], Decimal],
 ) -> None:
-    connector = LiveEcosConnector()
+    connector = LiveEcosConnector(client=Client.from_env())
 
     rows = fetcher(connector, date(2024, 1, 2), date(2024, 1, 5))
 

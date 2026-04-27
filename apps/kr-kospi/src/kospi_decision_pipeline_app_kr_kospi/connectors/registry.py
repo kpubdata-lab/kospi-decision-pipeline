@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
 from typing import final
 
-from ._secrets import resolve_live_api_key
+from . import client_factory
 from .ecos import LiveEcosConnector
 from .kosis import LiveKosisConnector
 from .krx import PykrxKrxConnector
@@ -12,33 +10,18 @@ from .krx import PykrxKrxConnector
 
 @final
 class LiveConnectorRegistry:
-    _environment: Mapping[str, str]
-
-    def __init__(self, environment: Mapping[str, str] | None = None) -> None:
-        self._environment = environment or os.environ
+    def __init__(self) -> None:
+        pass
 
     def get_connector(self, source: str, *, api_key: str | None = None) -> object:
+        del api_key
         if source == "krx":
             return PykrxKrxConnector()
         if source == "ecos":
-            return LiveEcosConnector(
-                api_key=resolve_live_api_key(
-                    source=source,
-                    api_key=api_key,
-                    environment=self._environment,
-                ),
-                environment=self._environment,
-            )
+            return LiveEcosConnector(client=client_factory.build_client())
         if source == "kosis":
-            return LiveKosisConnector(
-                api_key=resolve_live_api_key(
-                    source=source,
-                    api_key=api_key,
-                    environment=self._environment,
-                ),
-                environment=self._environment,
-            )
+            return LiveKosisConnector(client=client_factory.build_client())
         raise ValueError(f"unsupported source: {source}")
 
 
-__all__ = ["LiveConnectorRegistry", "resolve_live_api_key"]
+__all__ = ["LiveConnectorRegistry"]

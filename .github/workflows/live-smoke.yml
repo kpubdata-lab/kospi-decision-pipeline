@@ -283,8 +283,8 @@ jobs:
               --folds-config "${fixture_runtime}/config/folds.yaml"
           }
 
-          if [[ -z "${KPUBDATA_BOK_API_KEY:-}" ]]; then
-            echo "::warning title=Live smoke skipped::KPUBDATA_BOK_API_KEY is not configured. Running pure-fixture CLI smoke instead."
+          if [[ -z "${KPUBDATA_BOK_API_KEY:-}" || -z "${KPUBDATA_KOSIS_API_KEY:-}" ]]; then
+            echo "::warning title=Live smoke skipped::KPUBDATA_BOK_API_KEY and KPUBDATA_KOSIS_API_KEY are both required for kpubdata-backed live smoke. Running pure-fixture CLI smoke instead."
             run_fixture_smoke
             exit 0
           fi
@@ -319,12 +319,8 @@ jobs:
           uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset usd_krw --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
           uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset bond_yield --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
 
-          if [[ -n "${KPUBDATA_KOSIS_API_KEY:-}" ]]; then
-            header "Live ingest: KOSIS bronze-only"
-            uv run --python 3.12 kospi-pipeline ingest --live --source kosis --dataset macro_indicators --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
-          else
-            echo "::warning title=KOSIS skipped::KPUBDATA_KOSIS_API_KEY is not configured. Skipping bronze-only KOSIS ingest for this run."
-          fi
+          header "Live ingest: KOSIS bronze-only"
+          uv run --python 3.12 kospi-pipeline ingest --live --source kosis --dataset macro_indicators --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
 
           header "Build silver and gold"
           uv run --python 3.12 kospi-pipeline build-features \

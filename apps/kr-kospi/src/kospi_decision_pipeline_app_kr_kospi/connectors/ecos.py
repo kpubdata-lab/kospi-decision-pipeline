@@ -80,11 +80,9 @@ class LiveEcosConnector:
         end: date,
     ) -> tuple[Mapping[str, object], ...]:
         batch = self._client.dataset(dataset_id).list(
-            filters={
-                "start_date": start.isoformat(),
-                "end_date": end.isoformat(),
-                "frequency": _ECOS_DAILY_CYCLE,
-            }
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            frequency=_ECOS_DAILY_CYCLE,
         )
         return tuple(cast(Sequence[Mapping[str, object]], batch.items))
 

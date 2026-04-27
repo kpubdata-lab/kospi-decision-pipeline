@@ -68,10 +68,8 @@ class LiveKosisConnector:
     def fetch_macro_indicators(self, start: date, end: date) -> tuple[KosisMacroIndicatorRow, ...]:
         try:
             batch = self._client.dataset("kosis.industrial_production").list(
-                filters={
-                    "start_date": start.isoformat(),
-                    "end_date": end.isoformat(),
-                }
+                start_date=start.isoformat(),
+                end_date=end.isoformat(),
             )
         except DatasetNotFoundError as error:
             raise UnsupportedDatasetError(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import socket
 import os
+from typing import cast
 
 import pytest
 
@@ -28,7 +29,8 @@ def pytest_collection_modifyitems(
     for item in items:
         if "live" not in item.keywords:
             continue
-        module_name = str(item.module.__name__)
+        module = getattr(item, "module", None)
+        module_name = str(getattr(module, "__name__", ""))
         if module_name.endswith("test_ecos_live") and not live_enabled["KOSPI_PIPELINE_LIVE_ECOS"]:
             item.add_marker(
                 pytest.mark.skip(reason="set KOSPI_PIPELINE_LIVE_ECOS=1 to run live ECOS tests")
@@ -58,9 +60,10 @@ def block_network_by_default(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
 ) -> None:
-    if request.node.get_closest_marker("requires_network") is not None:
+    node = cast(pytest.Item, request.node)
+    if node.get_closest_marker("requires_network") is not None:
         return
-    if request.node.get_closest_marker("live") is not None:
+    if node.get_closest_marker("live") is not None:
         return
 
     def fail_create_connection(*args: object, **kwargs: object) -> None:

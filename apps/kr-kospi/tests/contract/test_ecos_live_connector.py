@@ -17,6 +17,9 @@ from kospi_decision_pipeline_app_kr_kospi.connectors._http import (
 )
 from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import (
     LiveEcosConnector,
+    EcosBaseRateRow,
+    EcosBondYieldRow,
+    EcosUsdKrwRow,
     parse_base_rate_rows,
     parse_bond_yield_rows,
     parse_usd_krw_rows,
@@ -38,7 +41,12 @@ BOND_YIELD_PATH = (
 
 
 def _load_payload(name: str) -> Mapping[str, object]:
-    return json.loads((FIXTURES_ROOT / name).read_text(encoding="utf-8"))
+    return cast(
+        Mapping[str, object], json.loads((FIXTURES_ROOT / name).read_text(encoding="utf-8"))
+    )
+
+
+EcosRow = EcosBaseRateRow | EcosUsdKrwRow | EcosBondYieldRow
 
 
 def _load_payload_dict(name: str) -> dict[str, object]:
@@ -259,7 +267,7 @@ def test_live_ecos_connector_replays_recorded_success_payloads_for_all_series(
         transport=httpx.MockTransport(handler),
     )
 
-    rows = cast(tuple[object, ...], getattr(connector, fetcher_name)(START_DATE, END_DATE))
+    rows = cast(tuple[EcosRow, ...], getattr(connector, fetcher_name)(START_DATE, END_DATE))
 
     assert tuple(getattr(row, value_attr) for row in rows) == expected_values
     assert tuple(row.value_date for row in rows) == (START_DATE, date(2024, 1, 3), END_DATE)
@@ -313,7 +321,7 @@ def test_live_ecos_connector_raises_on_recorded_auth_failures_for_all_series(
 )
 def test_parse_ecos_rows_sorts_recorded_rows_deterministically(
     fixture_name: str,
-    parser: Callable[[object, str, str], tuple[object, ...]],
+    parser: Callable[[object, str, str], tuple[EcosRow, ...]],
     value_attr: str,
     expected_values: tuple[Decimal, ...],
 ) -> None:

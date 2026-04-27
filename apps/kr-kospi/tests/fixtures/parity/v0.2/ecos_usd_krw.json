@@ -1,0 +1,114 @@
+{
+  "normalized": [
+    {
+      "exchange_rate": "1289.10",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "usd_krw",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-02"
+    },
+    {
+      "exchange_rate": "1291.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "usd_krw",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-09"
+    },
+    {
+      "exchange_rate": "1287.70",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "usd_krw",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-16"
+    },
+    {
+      "exchange_rate": "1291.10",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "usd_krw",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-23"
+    },
+    {
+      "exchange_rate": "1283.40",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "usd_krw",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-31"
+    }
+  ],
+  "raw": {
+    "StatisticSearch": {
+      "RESULT": {
+        "CODE": "INFO-000",
+        "MESSAGE": "정상 처리되었습니다."
+      },
+      "list_total_count": 5,
+      "row": [
+        {
+          "DATA_VALUE": "1289.10",
+          "ITEM_CODE1": "0000003",
+          "ITEM_NAME1": "원/미국달러(매매기준율)",
+          "STAT_CODE": "731Y003",
+          "TIME": "20240102"
+        },
+        {
+          "DATA_VALUE": "1291.50",
+          "ITEM_CODE1": "0000003",
+          "ITEM_NAME1": "원/미국달러(매매기준율)",
+          "STAT_CODE": "731Y003",
+          "TIME": "20240109"
+        },
+        {
+          "DATA_VALUE": "1287.70",
+          "ITEM_CODE1": "0000003",
+          "ITEM_NAME1": "원/미국달러(매매기준율)",
+          "STAT_CODE": "731Y003",
+          "TIME": "20240116"
+        },
+        {
+          "DATA_VALUE": "1291.10",
+          "ITEM_CODE1": "0000003",
+          "ITEM_NAME1": "원/미국달러(매매기준율)",
+          "STAT_CODE": "731Y003",
+          "TIME": "20240123"
+        },
+        {
+          "DATA_VALUE": "1283.40",
+          "ITEM_CODE1": "0000003",
+          "ITEM_NAME1": "원/미국달러(매매기준율)",
+          "STAT_CODE": "731Y003",
+          "TIME": "20240131"
+        }
+      ]
+    }
+  },
+  "window": {
+    "end": "2024-01-31",
+    "start": "2024-01-01"
+  }
+}

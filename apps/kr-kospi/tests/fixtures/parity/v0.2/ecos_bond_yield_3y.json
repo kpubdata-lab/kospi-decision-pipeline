@@ -1,0 +1,119 @@
+{
+  "normalized": [
+    {
+      "maturity_code": "3Y",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "bond_yield",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-02",
+      "yield_rate": "3.28"
+    },
+    {
+      "maturity_code": "3Y",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "bond_yield",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-09",
+      "yield_rate": "3.24"
+    },
+    {
+      "maturity_code": "3Y",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "bond_yield",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-16",
+      "yield_rate": "3.15"
+    },
+    {
+      "maturity_code": "3Y",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "bond_yield",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-23",
+      "yield_rate": "3.08"
+    },
+    {
+      "maturity_code": "3Y",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "bond_yield",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-31",
+      "yield_rate": "3.00"
+    }
+  ],
+  "raw": {
+    "StatisticSearch": {
+      "RESULT": {
+        "CODE": "INFO-000",
+        "MESSAGE": "정상 처리되었습니다."
+      },
+      "list_total_count": 5,
+      "row": [
+        {
+          "DATA_VALUE": "3.28",
+          "ITEM_CODE1": "010200000",
+          "ITEM_NAME1": "국고채(3년)",
+          "STAT_CODE": "817Y002",
+          "TIME": "20240102"
+        },
+        {
+          "DATA_VALUE": "3.24",
+          "ITEM_CODE1": "010200000",
+          "ITEM_NAME1": "국고채(3년)",
+          "STAT_CODE": "817Y002",
+          "TIME": "20240109"
+        },
+        {
+          "DATA_VALUE": "3.15",
+          "ITEM_CODE1": "010200000",
+          "ITEM_NAME1": "국고채(3년)",
+          "STAT_CODE": "817Y002",
+          "TIME": "20240116"
+        },
+        {
+          "DATA_VALUE": "3.08",
+          "ITEM_CODE1": "010200000",
+          "ITEM_NAME1": "국고채(3년)",
+          "STAT_CODE": "817Y002",
+          "TIME": "20240123"
+        },
+        {
+          "DATA_VALUE": "3.00",
+          "ITEM_CODE1": "010200000",
+          "ITEM_NAME1": "국고채(3년)",
+          "STAT_CODE": "817Y002",
+          "TIME": "20240131"
+        }
+      ]
+    }
+  },
+  "window": {
+    "end": "2024-01-31",
+    "start": "2024-01-01"
+  }
+}

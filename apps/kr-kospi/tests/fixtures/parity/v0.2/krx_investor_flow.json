@@ -1,0 +1,122 @@
+{
+  "normalized": [
+    {
+      "foreign_net_buy": "-15000000000",
+      "individual_net_buy": "40000000000",
+      "institution_net_buy": "-25000000000",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "investor_flow",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "trade_date": "2024-01-02"
+    },
+    {
+      "foreign_net_buy": "25000000000",
+      "individual_net_buy": "-60000000000",
+      "institution_net_buy": "35000000000",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "investor_flow",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "trade_date": "2024-01-03"
+    },
+    {
+      "foreign_net_buy": "-45000000000",
+      "individual_net_buy": "15000000000",
+      "institution_net_buy": "30000000000",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "investor_flow",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "trade_date": "2024-01-04"
+    },
+    {
+      "foreign_net_buy": "-50000000000",
+      "individual_net_buy": "80000000000",
+      "institution_net_buy": "-30000000000",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "investor_flow",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "trade_date": "2024-01-05"
+    },
+    {
+      "foreign_net_buy": "90000000000",
+      "individual_net_buy": "-120000000000",
+      "institution_net_buy": "30000000000",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "investor_flow",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "trade_date": "2024-01-08"
+    }
+  ],
+  "raw": {
+    "rows": [
+      {
+        "index": "2024-01-08T00:00:00",
+        "values": {
+          "개인": "-120000000000",
+          "기관합계": "30000000000",
+          "외국인합계": "90000000000"
+        }
+      },
+      {
+        "index": "2024-01-05T00:00:00",
+        "values": {
+          "개인": "80000000000",
+          "기관합계": "-30000000000",
+          "외국인합계": "-50000000000"
+        }
+      },
+      {
+        "index": "2024-01-04T00:00:00",
+        "values": {
+          "개인": "15000000000",
+          "기관합계": "30000000000",
+          "외국인합계": "-45000000000"
+        }
+      },
+      {
+        "index": "2024-01-03T00:00:00",
+        "values": {
+          "개인": "-60000000000",
+          "기관합계": "35000000000",
+          "외국인합계": "25000000000"
+        }
+      },
+      {
+        "index": "2024-01-02T00:00:00",
+        "values": {
+          "개인": "40000000000",
+          "기관합계": "-25000000000",
+          "외국인합계": "-15000000000"
+        }
+      }
+    ]
+  },
+  "window": {
+    "end": "2024-01-08",
+    "start": "2024-01-02"
+  }
+}

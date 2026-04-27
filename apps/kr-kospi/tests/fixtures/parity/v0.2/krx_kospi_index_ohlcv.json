@@ -1,0 +1,157 @@
+{
+  "normalized": [
+    {
+      "close_price": "2532.34",
+      "high_price": "2540.28",
+      "low_price": "2515.03",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "kospi_index",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "open_price": "2521.17",
+      "trade_date": "2024-01-02",
+      "turnover": "8012345678000",
+      "volume": 412345678
+    },
+    {
+      "close_price": "2543.12",
+      "high_price": "2556.75",
+      "low_price": "2538.66",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "kospi_index",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "open_price": "2548.25",
+      "trade_date": "2024-01-03",
+      "turnover": "7765432109000",
+      "volume": 387654321
+    },
+    {
+      "close_price": "2558.70",
+      "high_price": "2564.90",
+      "low_price": "2544.10",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "kospi_index",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "open_price": "2552.40",
+      "trade_date": "2024-01-04",
+      "turnover": "7890123456000",
+      "volume": 398765432
+    },
+    {
+      "close_price": "2568.55",
+      "high_price": "2572.80",
+      "low_price": "2551.72",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "kospi_index",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "open_price": "2560.15",
+      "trade_date": "2024-01-05",
+      "turnover": "7987654321000",
+      "volume": 401234567
+    },
+    {
+      "close_price": "2576.20",
+      "high_price": "2584.12",
+      "low_price": "2562.45",
+      "metadata": {
+        "api_version": null,
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.krx.PykrxKrxConnector",
+        "dataset_name": "kospi_index",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": null,
+        "source_name": "krx"
+      },
+      "open_price": "2571.31",
+      "trade_date": "2024-01-08",
+      "turnover": "8123456789000",
+      "volume": 423456789
+    }
+  ],
+  "raw": {
+    "rows": [
+      {
+        "index": "2024-01-08T00:00:00",
+        "values": {
+          "거래대금": "8123456789000",
+          "거래량": 423456789,
+          "고가": "2584.12",
+          "상장시가총액": "2095000000000000",
+          "시가": "2571.31",
+          "저가": "2562.45",
+          "종가": "2576.20"
+        }
+      },
+      {
+        "index": "2024-01-05T00:00:00",
+        "values": {
+          "거래대금": "7987654321000",
+          "거래량": 401234567,
+          "고가": "2572.80",
+          "상장시가총액": "2089000000000000",
+          "시가": "2560.15",
+          "저가": "2551.72",
+          "종가": "2568.55"
+        }
+      },
+      {
+        "index": "2024-01-04T00:00:00",
+        "values": {
+          "거래대금": "7890123456000",
+          "거래량": 398765432,
+          "고가": "2564.90",
+          "상장시가총액": "2081000000000000",
+          "시가": "2552.40",
+          "저가": "2544.10",
+          "종가": "2558.70"
+        }
+      },
+      {
+        "index": "2024-01-03T00:00:00",
+        "values": {
+          "거래대금": "7765432109000",
+          "거래량": 387654321,
+          "고가": "2556.75",
+          "상장시가총액": "2074000000000000",
+          "시가": "2548.25",
+          "저가": "2538.66",
+          "종가": "2543.12"
+        }
+      },
+      {
+        "index": "2024-01-02T00:00:00",
+        "values": {
+          "거래대금": "8012345678000",
+          "거래량": 412345678,
+          "고가": "2540.28",
+          "상장시가총액": "2068000000000000",
+          "시가": "2521.17",
+          "저가": "2515.03",
+          "종가": "2532.34"
+        }
+      }
+    ]
+  },
+  "window": {
+    "end": "2024-01-08",
+    "start": "2024-01-02"
+  }
+}

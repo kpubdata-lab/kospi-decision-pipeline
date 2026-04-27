@@ -10,7 +10,6 @@ from typing import cast
 
 import pytest
 from kpubdata import Client
-from kpubdata.core.models import Query
 from kpubdata.exceptions import DatasetNotFoundError
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.kosis import (
@@ -33,20 +32,10 @@ class _FakeRecordBatch:
 class _FakeDataset:
     def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
         self._batch = _FakeRecordBatch(items)
-        self.queries: list[Query] = []
-
-    def query_records(self, query: Query) -> _FakeRecordBatch:
-        self.queries.append(query)
-        return self._batch
-
-
-class _ListOnlyDataset:
-    def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
-        self._batch = _FakeRecordBatch(items)
         self.calls: list[dict[str, object]] = []
 
-    def list(self, **kwargs: object) -> _FakeRecordBatch:
-        self.calls.append(dict(kwargs))
+    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
+        self.calls.append(dict(filters))
         return self._batch
 
 
@@ -59,12 +48,12 @@ class _DatasetNotFoundClient:
 
 
 class _FakeClient:
-    def __init__(self, provider_key: str, datasets: Mapping[str, _FakeDataset]) -> None:
+    def __init__(self, provider_key: str, datasets: Mapping[str, object]) -> None:
         self._config = SimpleNamespace(provider_keys={"kosis": provider_key})
         self._datasets = dict(datasets)
         self.dataset_calls: list[str] = []
 
-    def dataset(self, dataset_id: str) -> _FakeDataset:
+    def dataset(self, dataset_id: str) -> object:
         self.dataset_calls.append(dataset_id)
         return self._datasets[dataset_id]
 
@@ -134,8 +123,11 @@ def test_live_kosis_connector_fetches_macro_indicators_via_kpubdata_client() -> 
     rows = connector.fetch_macro_indicators(START_DATE, END_DATE)
 
     assert client.dataset_calls == ["kosis.industrial_production"]
-    assert dataset.queries == [
-        Query(start_date=START_DATE.isoformat(), end_date=END_DATE.isoformat())
+    assert dataset.calls == [
+        {
+            "start_date": START_DATE.isoformat(),
+            "end_date": END_DATE.isoformat(),
+        }
     ]
     assert [row.value_date for row in rows] == [date(2024, 1, 1), date(2024, 2, 1)]
     assert [row.indicator_value for row in rows] == [Decimal("100.1"), Decimal("101.2")]
@@ -143,38 +135,6 @@ def test_live_kosis_connector_fetches_macro_indicators_via_kpubdata_client() -> 
         rows[0].metadata.key_fingerprint_sha256
         == hashlib.sha256("explicit-kosis-key".encode("utf-8")).hexdigest()[:16]
     )
-
-
-def test_live_kosis_connector_falls_back_to_dataset_list_when_query_records_is_unavailable() -> (
-    None
-):
-    dataset = _ListOnlyDataset(
-        (
-            {
-                "PRD_DE": "202401",
-                "DT": "100.1",
-                "C1_OBJ_NM": "산업생산지수",
-                "UNIT_NM": "2020=100",
-            },
-        )
-    )
-    client = _ConfigurableClient(
-        "kosis.industrial_production",
-        dataset,
-        SimpleNamespace(provider_keys={}),
-    )
-
-    connector = LiveKosisConnector(client=cast(Client, client), now=lambda: FETCHED_AT)
-
-    rows = connector.fetch_macro_indicators(START_DATE, END_DATE)
-
-    assert rows
-    assert dataset.calls == [
-        {
-            "start_date": START_DATE.isoformat(),
-            "end_date": END_DATE.isoformat(),
-        }
-    ]
 
 
 def test_live_kosis_connector_rejects_unsupported_live_dataset_shape() -> None:
@@ -212,11 +172,11 @@ def test_live_kosis_connector_leaves_fingerprint_empty_when_client_config_is_unu
     assert rows[0].metadata.key_fingerprint_sha256 is None
 
 
-def test_live_kosis_connector_raises_when_dataset_cannot_query_records() -> None:
+def test_live_kosis_connector_raises_when_dataset_cannot_list_records() -> None:
     client = _ConfigurableClient("kosis.industrial_production", object(), None)
     connector = LiveKosisConnector(client=cast(Client, client), now=lambda: FETCHED_AT)
 
-    with pytest.raises(TypeError, match="query_records"):
+    with pytest.raises(AttributeError, match="list"):
         connector.fetch_macro_indicators(START_DATE, END_DATE)
 
 

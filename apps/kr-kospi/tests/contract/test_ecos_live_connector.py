@@ -12,7 +12,6 @@ from typing import cast
 
 import pytest
 from kpubdata import Client
-from kpubdata.core.models import Query
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import (
     EcosBaseRateRow,
@@ -38,30 +37,20 @@ class _FakeRecordBatch:
 class _FakeDataset:
     def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
         self._batch = _FakeRecordBatch(items)
-        self.queries: list[Query] = []
-
-    def query_records(self, query: Query) -> _FakeRecordBatch:
-        self.queries.append(query)
-        return self._batch
-
-
-class _ListOnlyDataset:
-    def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
-        self._batch = _FakeRecordBatch(items)
         self.calls: list[dict[str, object]] = []
 
-    def list(self, **kwargs: object) -> _FakeRecordBatch:
-        self.calls.append(dict(kwargs))
+    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
+        self.calls.append(dict(filters))
         return self._batch
 
 
 class _FakeClient:
-    def __init__(self, provider_key: str, datasets: Mapping[str, _FakeDataset]) -> None:
+    def __init__(self, provider_key: str, datasets: Mapping[str, object]) -> None:
         self._config = SimpleNamespace(provider_keys={"bok": provider_key})
         self._datasets = dict(datasets)
         self.dataset_calls: list[str] = []
 
-    def dataset(self, dataset_id: str) -> _FakeDataset:
+    def dataset(self, dataset_id: str) -> object:
         self.dataset_calls.append(dataset_id)
         return self._datasets[dataset_id]
 
@@ -137,12 +126,12 @@ def test_live_ecos_connector_fetches_series_via_kpubdata_client(
     rows = cast(tuple[EcosRow, ...], getattr(connector, fetcher_name)(START_DATE, END_DATE))
 
     assert client.dataset_calls == [dataset_id]
-    assert dataset.queries == [
-        Query(
-            start_date=START_DATE.isoformat(),
-            end_date=END_DATE.isoformat(),
-            extra={"frequency": "D"},
-        )
+    assert dataset.calls == [
+        {
+            "start_date": START_DATE.isoformat(),
+            "end_date": END_DATE.isoformat(),
+            "frequency": "D",
+        }
     ]
     assert tuple(getattr(row, value_attr) for row in rows) == expected_values
     assert tuple(row.value_date for row in rows) == (START_DATE, date(2024, 1, 3), END_DATE)
@@ -152,24 +141,6 @@ def test_live_ecos_connector_fetches_series_via_kpubdata_client(
         rows[0].metadata.key_fingerprint_sha256
         == hashlib.sha256("test-api-key".encode("utf-8")).hexdigest()[:16]
     )
-
-
-def test_live_ecos_connector_falls_back_to_dataset_list_when_query_records_is_unavailable() -> None:
-    dataset = _ListOnlyDataset(_records_from_payload("base_rate_statistic_search.json"))
-    client = _ConfigurableClient("bok.base_rate", dataset, SimpleNamespace(provider_keys={}))
-
-    connector = LiveEcosConnector(client=cast(Client, client))
-
-    rows = connector.fetch_base_rate_series(START_DATE, END_DATE)
-
-    assert rows
-    assert dataset.calls == [
-        {
-            "start_date": START_DATE.isoformat(),
-            "end_date": END_DATE.isoformat(),
-            "frequency": "D",
-        }
-    ]
 
 
 @pytest.mark.parametrize(
@@ -193,11 +164,11 @@ def test_live_ecos_connector_leaves_fingerprint_empty_when_client_config_is_unus
     assert rows[0].metadata.key_fingerprint_sha256 is None
 
 
-def test_live_ecos_connector_raises_when_dataset_cannot_query_records() -> None:
+def test_live_ecos_connector_raises_when_dataset_cannot_list_records() -> None:
     client = _ConfigurableClient("bok.base_rate", object(), None)
     connector = LiveEcosConnector(client=cast(Client, client))
 
-    with pytest.raises(TypeError, match="query_records"):
+    with pytest.raises(AttributeError, match="list"):
         connector.fetch_base_rate_series(START_DATE, END_DATE)
 
 

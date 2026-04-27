@@ -1,0 +1,114 @@
+{
+  "normalized": [
+    {
+      "base_rate": "3.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "base_rate",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-01"
+    },
+    {
+      "base_rate": "3.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "base_rate",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-08"
+    },
+    {
+      "base_rate": "3.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "base_rate",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-15"
+    },
+    {
+      "base_rate": "3.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "base_rate",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-22"
+    },
+    {
+      "base_rate": "3.50",
+      "metadata": {
+        "api_version": "StatisticSearch",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.ecos.LiveEcosConnector",
+        "dataset_name": "base_rate",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "ecos"
+      },
+      "value_date": "2024-01-31"
+    }
+  ],
+  "raw": {
+    "StatisticSearch": {
+      "RESULT": {
+        "CODE": "INFO-000",
+        "MESSAGE": "정상 처리되었습니다."
+      },
+      "list_total_count": 5,
+      "row": [
+        {
+          "DATA_VALUE": "3.50",
+          "ITEM_CODE1": "0101000",
+          "ITEM_NAME1": "한국은행 기준금리",
+          "STAT_CODE": "722Y001",
+          "TIME": "20240101"
+        },
+        {
+          "DATA_VALUE": "3.50",
+          "ITEM_CODE1": "0101000",
+          "ITEM_NAME1": "한국은행 기준금리",
+          "STAT_CODE": "722Y001",
+          "TIME": "20240108"
+        },
+        {
+          "DATA_VALUE": "3.50",
+          "ITEM_CODE1": "0101000",
+          "ITEM_NAME1": "한국은행 기준금리",
+          "STAT_CODE": "722Y001",
+          "TIME": "20240115"
+        },
+        {
+          "DATA_VALUE": "3.50",
+          "ITEM_CODE1": "0101000",
+          "ITEM_NAME1": "한국은행 기준금리",
+          "STAT_CODE": "722Y001",
+          "TIME": "20240122"
+        },
+        {
+          "DATA_VALUE": "3.50",
+          "ITEM_CODE1": "0101000",
+          "ITEM_NAME1": "한국은행 기준금리",
+          "STAT_CODE": "722Y001",
+          "TIME": "20240131"
+        }
+      ]
+    }
+  },
+  "window": {
+    "end": "2024-01-31",
+    "start": "2024-01-01"
+  }
+}

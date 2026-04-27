@@ -60,7 +60,7 @@ TechnicalAgent   DomesticMacroAgent   FlowAgent   ValuationAgent   VolatilityAge
 - Python 3.12+
 - `uv`
 - Fixture-backed local runs for documentation and CI-style dry runs
-- `ECOS_API_KEY` for live ECOS ingest; `KOSIS_API_KEY` only if you want the optional bronze-only KOSIS live ingest in v0.2
+- `KPUBDATA_BOK_API_KEY` for live ECOS ingest; `KPUBDATA_KOSIS_API_KEY` only if you want the optional bronze-only KOSIS live ingest in v0.2
 - KRX live smoke does not require a repository secret, but the scheduled GitHub Actions workflow falls back to fixture smoke when required live secrets are absent
 
 Environment variables typically used for live runs depend on the upstream data client configuration. For safe automation, export the non-interactive shell settings used in CI:
@@ -74,14 +74,14 @@ export CI=true DEBIAN_FRONTEND=noninteractive GIT_TERMINAL_PROMPT=0 \
 Live-mode variables documented in `.env.example`:
 
 ```bash
-ECOS_API_KEY=
-KOSIS_API_KEY=
+KPUBDATA_BOK_API_KEY=
+KPUBDATA_KOSIS_API_KEY=
 KOSPI_PIPELINE_LIVE_ECOS=0
 KOSPI_PIPELINE_LIVE_KRX=0
 ```
 
-- `ECOS_API_KEY` is required for live ECOS bronze ingest.
-- `KOSIS_API_KEY` is optional and only used for bronze-only KOSIS ingest in v0.2.
+- `KPUBDATA_BOK_API_KEY` is required for live ECOS bronze ingest.
+- `KPUBDATA_KOSIS_API_KEY` is optional and only used for bronze-only KOSIS ingest in v0.2.
 - `KOSPI_PIPELINE_LIVE_ECOS=1` and `KOSPI_PIPELINE_LIVE_KRX=1` opt into the guarded live pytest smoke cases.
 
 ### Install
@@ -115,8 +115,8 @@ Important constraints before running the full pipeline:
 - reruns against the **same** live snapshot are idempotent and skip already-written Bronze partitions instead of rewriting them
 
 ```bash
-export ECOS_API_KEY="your-ecos-key"
-export KOSIS_API_KEY="your-kosis-key" # optional; KOSIS is bronze-only in v0.2
+export KPUBDATA_BOK_API_KEY="your-bok-key"
+export KPUBDATA_KOSIS_API_KEY="your-kosis-key" # optional; KOSIS is bronze-only in v0.2
 SNAPSHOT_ID="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
 LIVE_FROM="2024-01-01"
 LIVE_TO="2025-03-31"
@@ -158,7 +158,6 @@ uv run --python 3.12 kospi-pipeline ingest \
   --from "$LIVE_FROM" \
   --to "$LIVE_TO" \
   --snapshot-id "$SNAPSHOT_ID" \
-  --api-key "$ECOS_API_KEY" \
   --out data/bronze
 
 uv run --python 3.12 kospi-pipeline ingest \
@@ -168,7 +167,6 @@ uv run --python 3.12 kospi-pipeline ingest \
   --from "$LIVE_FROM" \
   --to "$LIVE_TO" \
   --snapshot-id "$SNAPSHOT_ID" \
-  --api-key "$ECOS_API_KEY" \
   --out data/bronze
 
 uv run --python 3.12 kospi-pipeline ingest \
@@ -178,7 +176,6 @@ uv run --python 3.12 kospi-pipeline ingest \
   --from "$LIVE_FROM" \
   --to "$LIVE_TO" \
   --snapshot-id "$SNAPSHOT_ID" \
-  --api-key "$ECOS_API_KEY" \
   --out data/bronze
 
 # Optional bronze-only KOSIS ingest in v0.2. This does not feed Gold/runtime yet.
@@ -189,7 +186,6 @@ uv run --python 3.12 kospi-pipeline ingest \
   --from "$LIVE_FROM" \
   --to "$LIVE_TO" \
   --snapshot-id "$SNAPSHOT_ID" \
-  --api-key "$KOSIS_API_KEY" \
   --out data/bronze
 
 # 2) Silver + Gold features from one snapshot-aware Bronze root
@@ -228,10 +224,10 @@ uv run --python 3.12 kospi-pipeline run-backtest \
 ### Nightly workflow and secret setup
 
 - GitHub Actions workflow: `.github/workflows/live-smoke.yml`
-- `ECOS_API_KEY` is required for the full live path.
-- `KOSIS_API_KEY` is optional and only enables the bronze-only KOSIS ingest path in v0.2.
-- When `ECOS_API_KEY` is missing, the workflow prints a warning and falls back to fixture-backed CLI smoke (`ingest`, `build-features`, `run`, `run-backtest`) instead of failing silently.
-- When `KOSIS_API_KEY` is missing, the workflow still runs KRX + ECOS + Silver/Gold + runtime smoke and prints that KOSIS was skipped.
+- `KPUBDATA_BOK_API_KEY` is required for the full live path.
+- `KPUBDATA_KOSIS_API_KEY` is optional and only enables the bronze-only KOSIS ingest path in v0.2.
+- When `KPUBDATA_BOK_API_KEY` is missing, the workflow prints a warning and falls back to fixture-backed CLI smoke (`ingest`, `build-features`, `run`, `run-backtest`) instead of failing silently.
+- When `KPUBDATA_KOSIS_API_KEY` is missing, the workflow still runs KRX + ECOS + Silver/Gold + runtime smoke and prints that KOSIS was skipped.
 - The acceptance text may say `backtest` informally, but the shipped CLI command used by the workflow is `run-backtest`.
 - Upstream auth failures, schema drift, and missing required inputs are intentionally loud because each workflow shell step runs with `set -euo pipefail` and explicit step headers.
 

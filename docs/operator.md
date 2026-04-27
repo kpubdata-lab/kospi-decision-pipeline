@@ -20,9 +20,9 @@ Primary automation lives in `.github/workflows/live-smoke.yml`.
    - Python 3.12 setup
    - `uv sync --extra dev`
 3. Live-mode decision tree
-   - if `ECOS_API_KEY` is present, run live KRX + ECOS ingest
-   - if `KOSIS_API_KEY` is also present, run optional bronze-only KOSIS ingest
-   - if `ECOS_API_KEY` is absent, print a warning and fall back to fixture-backed CLI smoke
+   - if `KPUBDATA_BOK_API_KEY` is present, run live KRX + ECOS ingest
+   - if `KPUBDATA_KOSIS_API_KEY` is also present, run optional bronze-only KOSIS ingest
+   - if `KPUBDATA_BOK_API_KEY` is absent, print a warning and fall back to fixture-backed CLI smoke
 4. Materialization
    - build Silver/Gold from one chosen snapshot-aware Bronze root
    - run `kospi-pipeline run`
@@ -82,8 +82,8 @@ Operationally:
 
 Repository / environment secrets:
 
-- `ECOS_API_KEY` — required for full live smoke
-- `KOSIS_API_KEY` — optional, bronze-only in v0.2
+- `KPUBDATA_BOK_API_KEY` — required for full live smoke
+- `KPUBDATA_KOSIS_API_KEY` — optional, bronze-only in v0.2
 
 Rotation procedure:
 
@@ -115,12 +115,12 @@ Response checklist:
 ## Manual ad-hoc commands
 
 ```bash
-export ECOS_API_KEY="..."
-export KOSIS_API_KEY="..." # optional
+export KPUBDATA_BOK_API_KEY="..."
+export KPUBDATA_KOSIS_API_KEY="..." # optional
 SNAPSHOT_ID="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
 
 uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset kospi_index --from 2024-01-01 --to 2025-03-31 --snapshot-id "$SNAPSHOT_ID" --out data/bronze
-uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_rate --from 2024-01-01 --to 2025-03-31 --snapshot-id "$SNAPSHOT_ID" --api-key "$ECOS_API_KEY" --out data/bronze
+uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_rate --from 2024-01-01 --to 2025-03-31 --snapshot-id "$SNAPSHOT_ID" --out data/bronze
 uv run --python 3.12 kospi-pipeline build-features --layer all --from 2024-01-01 --to 2025-03-31 --bronze-dir "data/bronze/$SNAPSHOT_ID" --silver-dir "data/silver/$SNAPSHOT_ID" --out "data/gold/$SNAPSHOT_ID"
 uv run --python 3.12 kospi-pipeline run --features "data/gold/$SNAPSHOT_ID/decision_features.parquet" --out "data/decisions/$SNAPSHOT_ID"
 ```

@@ -214,8 +214,12 @@ def test_cli_main_live_ingest_writes_snapshot_partition_layout(
 
 
 def test_cli_main_fails_clearly_for_unsupported_live_kosis_dataset(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("KPUBDATA_KOSIS_API_KEY", "test-kosis-api-key")
+
     assert (
         main(
             [

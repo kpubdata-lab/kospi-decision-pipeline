@@ -2,10 +2,11 @@
 
 ## Scope
 
-This runbook covers the v0.2 operating path for nightly or ad-hoc live smoke runs.
+This runbook covers the v0.3 operating path for nightly or ad-hoc live smoke runs.
 
 - KRX + ECOS feed the shipped Silver/Gold/runtime path.
-- KOSIS live ingest is **bronze-only in v0.2** and must not be treated as a Gold/runtime dependency unless a later cadence-normalization issue lands.
+- All shipped live ingest now runs through `kpubdata.Client`.
+- KOSIS live ingest is **bronze-only in v0.3** and must not be treated as a Gold/runtime dependency unless a later cadence-normalization issue lands.
 - Fixture smoke remains the fallback when required live secrets are absent.
 
 ## Daily / nightly run procedure
@@ -80,10 +81,11 @@ Operationally:
 
 ## Secret setup and rotation
 
-Repository / environment secrets:
+Repository secrets / environment variables:
 
 - `KPUBDATA_BOK_API_KEY` — required for full live smoke
-- `KPUBDATA_KOSIS_API_KEY` — optional, bronze-only in v0.2
+- `KPUBDATA_KOSIS_API_KEY` — optional, bronze-only in v0.3
+- `KPUBDATA_KRX_INTEGRATION` — authless KRX integration-test gate; not a secret
 
 Rotation procedure:
 
@@ -117,6 +119,7 @@ Response checklist:
 ```bash
 export KPUBDATA_BOK_API_KEY="..."
 export KPUBDATA_KOSIS_API_KEY="..." # optional
+export KPUBDATA_KRX_INTEGRATION=1    # optional authless KRX integration gate
 SNAPSHOT_ID="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
 
 uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset kospi_index --from 2024-01-01 --to 2025-03-31 --snapshot-id "$SNAPSHOT_ID" --out data/bronze
@@ -124,3 +127,5 @@ uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_r
 uv run --python 3.12 kospi-pipeline build-features --layer all --from 2024-01-01 --to 2025-03-31 --bronze-dir "data/bronze/$SNAPSHOT_ID" --silver-dir "data/silver/$SNAPSHOT_ID" --out "data/gold/$SNAPSHOT_ID"
 uv run --python 3.12 kospi-pipeline run --features "data/gold/$SNAPSHOT_ID/decision_features.parquet" --out "data/decisions/$SNAPSHOT_ID"
 ```
+
+Dependency note: v0.3 expects `kpubdata[krx]>=0.5.0,<0.6.0` so the authless KRX adapter ships alongside the BOK/KOSIS-backed live ingest surface.

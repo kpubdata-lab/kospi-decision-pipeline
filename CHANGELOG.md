@@ -4,6 +4,20 @@
 >
 > This project is an experimental tool for research and education only. It is not investment advice or financial advisory.
 
+## v0.3.0
+
+### Added
+
+- Issue #64 / PR #69: ADR-014 documenting the final `kpubdata.Client` migration, sister-package rationale, and the v0.2 → v0.3 operator upgrade path
+
+### Changed
+
+- Issue #60 / PR #65: froze v0.2 parity fixtures to protect the connector normalization contract during the migration
+- Issue #61 / PR #66: introduced the shared `client_factory` and standardized live auth on `KPUBDATA_*_API_KEY` environment variables
+- Issue #62 / PR #67: migrated the ECOS and KOSIS live connectors to `kpubdata.Client`
+- Issue #63 / PR #68: migrated the KRX live connector to the authless `kpubdata[krx]` provider surface
+- Issue #64 / PR #69: removed the final legacy connector HTTP/secret shims, refreshed operator/release docs, and finalized the v0.3.0 release notes
+
 ## v0.1
 
 ### Foundation

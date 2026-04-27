@@ -1,0 +1,70 @@
+{
+  "normalized": [
+    {
+      "indicator_name": "산업생산지수",
+      "indicator_value": "100.7",
+      "metadata": {
+        "api_version": "getList",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.kosis.LiveKosisConnector",
+        "dataset_name": "macro_indicators",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "kosis"
+      },
+      "unit": "2020=100",
+      "value_date": "2024-01-01"
+    },
+    {
+      "indicator_name": "산업생산지수",
+      "indicator_value": "101.3",
+      "metadata": {
+        "api_version": "getList",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.kosis.LiveKosisConnector",
+        "dataset_name": "macro_indicators",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "kosis"
+      },
+      "unit": "2020=100",
+      "value_date": "2024-02-01"
+    },
+    {
+      "indicator_name": "산업생산지수",
+      "indicator_value": "102.4",
+      "metadata": {
+        "api_version": "getList",
+        "connector_id": "kospi_decision_pipeline_app_kr_kospi.connectors.kosis.LiveKosisConnector",
+        "dataset_name": "macro_indicators",
+        "fetched_at_utc": "2024-02-01T00:00:00+00:00",
+        "key_fingerprint_sha256": "cc029a44b21a17aa",
+        "source_name": "kosis"
+      },
+      "unit": "2020=100",
+      "value_date": "2024-03-01"
+    }
+  ],
+  "raw": [
+    {
+      "C1_OBJ_NM": "산업생산지수",
+      "DT": "102.4",
+      "PRD_DE": "202403",
+      "UNIT_NM": "2020=100"
+    },
+    {
+      "C1_OBJ_NM": "산업생산지수",
+      "DT": "101.3",
+      "PRD_DE": "202402",
+      "UNIT_NM": "2020=100"
+    },
+    {
+      "C1_OBJ_NM": "산업생산지수",
+      "DT": "100.7",
+      "PRD_DE": "202401",
+      "UNIT_NM": "2020=100"
+    }
+  ],
+  "window": {
+    "end": "2024-03-31",
+    "start": "2024-01-01"
+  }
+}

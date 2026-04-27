@@ -8,7 +8,6 @@ import hashlib
 from typing import Protocol, cast, final, runtime_checkable
 
 from kpubdata import Client
-from kpubdata.core.models import Query
 from kpubdata.exceptions import DatasetNotFoundError
 
 from .base import ConnectorRowBase, SourceMetadata
@@ -48,10 +47,6 @@ _KOSIS_API_VERSION = "getList"
 _LIVE_CONNECTOR_ID = "kospi_decision_pipeline_app_kr_kospi.connectors.kosis.LiveKosisConnector"
 
 
-class _BatchLike(Protocol):
-    items: Sequence[Mapping[str, object]]
-
-
 @final
 class LiveKosisConnector:
     _client: Client
@@ -72,9 +67,11 @@ class LiveKosisConnector:
 
     def fetch_macro_indicators(self, start: date, end: date) -> tuple[KosisMacroIndicatorRow, ...]:
         try:
-            batch = _query_record_batch(
-                dataset=self._client.dataset("kosis.industrial_production"),
-                query=Query(start_date=start.isoformat(), end_date=end.isoformat()),
+            batch = self._client.dataset("kosis.industrial_production").list(
+                filters={
+                    "start_date": start.isoformat(),
+                    "end_date": end.isoformat(),
+                }
             )
         except DatasetNotFoundError as error:
             raise UnsupportedDatasetError(
@@ -82,7 +79,7 @@ class LiveKosisConnector:
             ) from error
 
         return parse_macro_indicator_rows(
-            payload=batch.items,
+            payload=cast(Sequence[Mapping[str, object]], batch.items),
             dataset_name="macro_indicators",
             fetched_at_utc=self._fetched_at_utc(),
             key_fingerprint_sha256=self._key_fingerprint_sha256,
@@ -192,21 +189,6 @@ def _provider_keys(client: Client) -> Mapping[str, str] | None:
         if isinstance(key, str) and isinstance(value, str):
             typed_items.append((key, value))
     return dict(typed_items)
-
-
-def _query_record_batch(dataset: object, query: Query) -> _BatchLike:
-    query_records = getattr(dataset, "query_records", None)
-    if callable(query_records):
-        return cast(_BatchLike, query_records(query))
-
-    list_records = getattr(dataset, "list", None)
-    if callable(list_records):
-        return cast(
-            _BatchLike,
-            list_records(start_date=query.start_date, end_date=query.end_date),
-        )
-
-    raise TypeError("kpubdata dataset must provide query_records(Query) or list(...)")
 
 
 def _utc_now() -> datetime:

@@ -8,7 +8,6 @@ import hashlib
 from typing import Protocol, TypedDict, cast, final, runtime_checkable
 
 from kpubdata import Client
-from kpubdata.core.models import Query
 
 from .base import ConnectorRowBase, SourceMetadata
 
@@ -51,10 +50,6 @@ class _EcosResponseRow(TypedDict):
     DATA_VALUE: str
 
 
-class _BatchLike(Protocol):
-    items: Sequence[Mapping[str, object]]
-
-
 @final
 class LiveEcosConnector:
     _client: Client
@@ -84,15 +79,14 @@ class LiveEcosConnector:
         start: date,
         end: date,
     ) -> tuple[Mapping[str, object], ...]:
-        batch = _query_record_batch(
-            dataset=self._client.dataset(dataset_id),
-            query=Query(
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
-                extra={"frequency": _ECOS_DAILY_CYCLE},
-            ),
+        batch = self._client.dataset(dataset_id).list(
+            filters={
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "frequency": _ECOS_DAILY_CYCLE,
+            }
         )
-        return tuple(batch.items)
+        return tuple(cast(Sequence[Mapping[str, object]], batch.items))
 
     def _fetched_at_utc(self) -> str:
         return self._now().replace(microsecond=0).isoformat()
@@ -242,23 +236,6 @@ def _provider_keys(client: Client) -> Mapping[str, str] | None:
         if isinstance(key, str) and isinstance(value, str):
             typed_items.append((key, value))
     return dict(typed_items)
-
-
-def _query_record_batch(dataset: object, query: Query) -> _BatchLike:
-    query_records = getattr(dataset, "query_records", None)
-    if callable(query_records):
-        return cast(_BatchLike, query_records(query))
-
-    list_records = getattr(dataset, "list", None)
-    if callable(list_records):
-        list_kwargs: dict[str, object] = {
-            "start_date": query.start_date,
-            "end_date": query.end_date,
-            "frequency": cast(str, query.extra["frequency"]),
-        }
-        return cast(_BatchLike, list_records(**list_kwargs))
-
-    raise TypeError("kpubdata dataset must provide query_records(Query) or list(...)")
 
 
 def _utc_now() -> datetime:

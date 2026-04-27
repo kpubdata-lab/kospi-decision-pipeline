@@ -74,3 +74,11 @@ def test_returned_client_is_kpubdata_client(monkeypatch: pytest.MonkeyPatch) -> 
     client = build_client()
 
     assert isinstance(client, Client)
+
+
+def test_build_client_allows_authless_provider_sets(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_auth_env(monkeypatch)
+
+    client = build_client(required_providers=())
+
+    assert isinstance(client, Client)

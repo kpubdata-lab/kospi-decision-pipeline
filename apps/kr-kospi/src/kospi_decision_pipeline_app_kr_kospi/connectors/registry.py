@@ -16,7 +16,7 @@ class LiveConnectorRegistry:
     def get_connector(self, source: str, *, api_key: str | None = None) -> object:
         del api_key
         if source == "krx":
-            return PykrxKrxConnector()
+            return PykrxKrxConnector(client=client_factory.build_client(required_providers=()))
         if source == "ecos":
             return LiveEcosConnector(client=client_factory.build_client())
         if source == "kosis":

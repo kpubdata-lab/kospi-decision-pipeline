@@ -5,6 +5,7 @@ from datetime import date
 import os
 
 import pytest
+from kpubdata import Client
 
 from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
     InvestorFlowRow,
@@ -66,7 +67,7 @@ def test_pykrx_krx_connector_live_fetch_methods_return_sorted_rows(
     fetcher: KrxFetcher,
     date_getter: Callable[[KospiIndexRow | InvestorFlowRow | MarketValuationRow], date],
 ) -> None:
-    connector = PykrxKrxConnector()
+    connector = PykrxKrxConnector(client=Client.from_env())
 
     rows = fetcher(connector, date(2024, 1, 2), date(2024, 1, 5))
 

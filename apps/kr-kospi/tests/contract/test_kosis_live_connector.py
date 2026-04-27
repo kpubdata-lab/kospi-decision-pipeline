@@ -34,8 +34,20 @@ class _FakeDataset:
         self._batch = _FakeRecordBatch(items)
         self.calls: list[dict[str, object]] = []
 
-    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
-        self.calls.append(dict(filters))
+    def list(
+        self,
+        *,
+        start_date: object,
+        end_date: object,
+        frequency: object | None = None,
+    ) -> _FakeRecordBatch:
+        self.calls.append(
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "frequency": frequency,
+            }
+        )
         return self._batch
 
 
@@ -127,6 +139,7 @@ def test_live_kosis_connector_fetches_macro_indicators_via_kpubdata_client() -> 
         {
             "start_date": START_DATE.isoformat(),
             "end_date": END_DATE.isoformat(),
+            "frequency": None,
         }
     ]
     assert [row.value_date for row in rows] == [date(2024, 1, 1), date(2024, 2, 1)]

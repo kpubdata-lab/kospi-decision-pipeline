@@ -39,8 +39,20 @@ class _FakeDataset:
         self._batch = _FakeRecordBatch(items)
         self.calls: list[dict[str, object]] = []
 
-    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
-        self.calls.append(dict(filters))
+    def list(
+        self,
+        *,
+        start_date: object,
+        end_date: object,
+        frequency: object | None = None,
+    ) -> _FakeRecordBatch:
+        self.calls.append(
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "frequency": frequency,
+            }
+        )
         return self._batch
 
 

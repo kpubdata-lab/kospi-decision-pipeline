@@ -31,8 +31,8 @@ class _FakeDataset:
     def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
         self._batch = _FakeRecordBatch(items)
 
-    def query_records(self, query: object) -> _FakeRecordBatch:
-        del query
+    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
+        del filters
         return self._batch
 
 

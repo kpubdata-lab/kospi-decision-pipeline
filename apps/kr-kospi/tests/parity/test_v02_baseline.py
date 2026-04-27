@@ -31,8 +31,14 @@ class _FakeDataset:
     def __init__(self, items: tuple[Mapping[str, object], ...]) -> None:
         self._batch = _FakeRecordBatch(items)
 
-    def list(self, *, filters: Mapping[str, object]) -> _FakeRecordBatch:
-        del filters
+    def list(
+        self,
+        *,
+        start_date: object,
+        end_date: object,
+        frequency: object | None = None,
+    ) -> _FakeRecordBatch:
+        del start_date, end_date, frequency
         return self._batch
 
 

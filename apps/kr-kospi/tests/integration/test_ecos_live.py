@@ -25,6 +25,31 @@ pytestmark = [
 
 EcosRows = tuple[EcosBaseRateRow, ...] | tuple[EcosUsdKrwRow, ...] | tuple[EcosBondYieldRow, ...]
 EcosFetcher = Callable[[LiveEcosConnector, date, date], EcosRows]
+EcosRow = EcosBaseRateRow | EcosUsdKrwRow | EcosBondYieldRow
+
+
+def _fetch_base_rate(connector: LiveEcosConnector, start: date, end: date) -> EcosRows:
+    return connector.fetch_base_rate_series(start, end)
+
+
+def _fetch_usd_krw(connector: LiveEcosConnector, start: date, end: date) -> EcosRows:
+    return connector.fetch_usd_krw_series(start, end)
+
+
+def _fetch_bond_yield(connector: LiveEcosConnector, start: date, end: date) -> EcosRows:
+    return connector.fetch_bond_yield_series(start, end)
+
+
+def _base_rate_value(row: EcosBaseRateRow | EcosUsdKrwRow | EcosBondYieldRow) -> Decimal:
+    if isinstance(row, EcosBaseRateRow):
+        return row.base_rate
+    if isinstance(row, EcosUsdKrwRow):
+        return row.exchange_rate
+    return row.yield_rate
+
+
+def _value_date(row: EcosRow) -> date:
+    return row.value_date
 
 
 @pytest.mark.parametrize(
@@ -32,18 +57,18 @@ EcosFetcher = Callable[[LiveEcosConnector, date, date], EcosRows]
     [
         (
             "base_rate",
-            lambda connector, start, end: connector.fetch_base_rate_series(start, end),
-            lambda row: row.base_rate,
+            _fetch_base_rate,
+            _base_rate_value,
         ),
         (
             "usd_krw",
-            lambda connector, start, end: connector.fetch_usd_krw_series(start, end),
-            lambda row: row.exchange_rate,
+            _fetch_usd_krw,
+            _base_rate_value,
         ),
         (
             "bond_yield",
-            lambda connector, start, end: connector.fetch_bond_yield_series(start, end),
-            lambda row: row.yield_rate,
+            _fetch_bond_yield,
+            _base_rate_value,
         ),
     ],
 )
@@ -63,4 +88,6 @@ def test_live_ecos_connector_fetches_sorted_rows_for_all_series(
     assert first_row.metadata.api_version == "StatisticSearch"
     assert first_row.metadata.key_fingerprint_sha256 is not None
     assert tuple(value_getter(row) for row in rows)
-    assert rows == tuple(sorted(rows, key=lambda row: row.value_date))
+    assert tuple(_value_date(row) for row in rows) == tuple(
+        sorted(_value_date(row) for row in rows)
+    )

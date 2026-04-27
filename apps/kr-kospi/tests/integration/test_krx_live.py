@@ -18,6 +18,23 @@ pytestmark = [pytest.mark.live]
 
 KrxRows = tuple[KospiIndexRow, ...] | tuple[InvestorFlowRow, ...] | tuple[MarketValuationRow, ...]
 KrxFetcher = Callable[[PykrxKrxConnector, date, date], KrxRows]
+KrxRow = KospiIndexRow | InvestorFlowRow | MarketValuationRow
+
+
+def _fetch_kospi_index(connector: PykrxKrxConnector, start: date, end: date) -> KrxRows:
+    return connector.fetch_kospi_index(start, end)
+
+
+def _fetch_investor_flow(connector: PykrxKrxConnector, start: date, end: date) -> KrxRows:
+    return connector.fetch_investor_flow(start, end)
+
+
+def _fetch_market_valuation(connector: PykrxKrxConnector, start: date, end: date) -> KrxRows:
+    return connector.fetch_market_valuation(start, end)
+
+
+def _trade_date(row: KrxRow) -> date:
+    return row.trade_date
 
 
 @pytest.mark.skipif(
@@ -29,18 +46,18 @@ KrxFetcher = Callable[[PykrxKrxConnector, date, date], KrxRows]
     [
         (
             "kospi_index",
-            lambda connector, start, end: connector.fetch_kospi_index(start, end),
-            lambda row: row.trade_date,
+            _fetch_kospi_index,
+            _trade_date,
         ),
         (
             "investor_flow",
-            lambda connector, start, end: connector.fetch_investor_flow(start, end),
-            lambda row: row.trade_date,
+            _fetch_investor_flow,
+            _trade_date,
         ),
         (
             "market_valuation",
-            lambda connector, start, end: connector.fetch_market_valuation(start, end),
-            lambda row: row.trade_date,
+            _fetch_market_valuation,
+            _trade_date,
         ),
     ],
 )
@@ -56,5 +73,7 @@ def test_pykrx_krx_connector_live_fetch_methods_return_sorted_rows(
     assert rows
     assert rows[0].metadata.source_name == "krx"
     assert rows[0].metadata.dataset_name == dataset_name
-    assert rows == tuple(sorted(rows, key=date_getter))
+    assert tuple(date_getter(row) for row in rows) == tuple(
+        sorted(date_getter(row) for row in rows)
+    )
     assert all(row.metadata.connector_id.endswith("PykrxKrxConnector") for row in rows)

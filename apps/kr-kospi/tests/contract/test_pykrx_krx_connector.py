@@ -15,6 +15,9 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.krx import (
     KospiIndexRow,
     MarketValuationRow,
     PykrxKrxConnector,
+    parse_investor_flow_rows,
+    parse_kospi_index_rows,
+    parse_market_valuation_rows,
 )
 
 
@@ -301,7 +304,7 @@ def test_live_krx_connector_rejects_unsupported_row_dates() -> None:
             "krx.kospi_index": _FakeDataset(
                 (
                     {
-                        "date": cast(object, object()),
+                        "date": object(),
                         "open": 1,
                         "high": 1,
                         "low": 1,
@@ -420,3 +423,66 @@ def test_live_krx_connector_raises_when_dataset_cannot_list_records() -> None:
 
     with pytest.raises(AttributeError, match="list"):
         connector.fetch_kospi_index(START_DATE, END_DATE)
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({}, "record batch payload"),
+        (("bad-row",), "record payload"),
+        (({"open": 1},), "date"),
+        (({"date": "2024-01-02"},), "open"),
+    ],
+)
+def test_parse_kospi_index_rows_validate_payload_shape(payload: object, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        parse_kospi_index_rows(
+            payload=payload,
+            fetched_at_utc=FETCHED_AT.isoformat(),
+            connector_id="test.connector",
+        )
+
+
+def test_parse_investor_flow_rows_requires_string_investor_type() -> None:
+    with pytest.raises(ValueError, match="investor_type"):
+        parse_investor_flow_rows(
+            payload=({"date": "2024-01-02", "investor_type": 1, "net_value": "1"},),
+            fetched_at_utc=FETCHED_AT.isoformat(),
+            connector_id="test.connector",
+        )
+
+
+def test_parse_kospi_index_rows_accept_datetime_values() -> None:
+    rows = parse_kospi_index_rows(
+        payload=(
+            {
+                "date": datetime(2024, 1, 2, tzinfo=timezone.utc),
+                "open": "1",
+                "high": "2",
+                "low": "0",
+                "close": "1.5",
+                "volume": 10,
+                "trading_value": "100",
+            },
+        ),
+        fetched_at_utc=FETCHED_AT.isoformat(),
+        connector_id="test.connector",
+    )
+
+    assert rows[0].trade_date == date(2024, 1, 2)
+
+
+def test_parse_market_valuation_rows_skips_dates_missing_market_cap_match() -> None:
+    rows = parse_market_valuation_rows(
+        payload=(
+            {"date": "2024-01-03", "per": "12.5", "pbr": "0.95"},
+            {"date": "2024-01-02", "per": "12.2", "pbr": "0.93"},
+        ),
+        market_caps_payload=({"date": "2024-01-02", "market_cap": "2110000000000000"},),
+        fetched_at_utc=FETCHED_AT.isoformat(),
+        connector_id="test.connector",
+    )
+
+    assert [(row.trade_date, row.market_capitalization) for row in rows] == [
+        (date(2024, 1, 2), Decimal("2110000000000000"))
+    ]

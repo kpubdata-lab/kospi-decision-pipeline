@@ -37,8 +37,9 @@ class _FakeDataset:
         start_date: object,
         end_date: object,
         frequency: object | None = None,
+        market: object | None = None,
     ) -> _FakeRecordBatch:
-        del start_date, end_date, frequency
+        del start_date, end_date, frequency, market
         return self._batch
 
 
@@ -49,43 +50,6 @@ class _FakeClient:
 
     def dataset(self, dataset_id: str) -> _FakeDataset:
         return self._datasets[dataset_id]
-
-
-class _FakeFrameIndex:
-    def __init__(self, values: tuple[object, ...]) -> None:
-        self._values = values
-
-    def tolist(self) -> list[object]:
-        return list(self._values)
-
-
-class _FakeFrameAtAccessor:
-    def __init__(self, rows: dict[object, dict[str, object]]) -> None:
-        self._rows = rows
-
-    def __getitem__(self, key: tuple[object, str]) -> object:
-        index_value, column_name = key
-        return self._rows[index_value][column_name]
-
-
-class _FakeDataFrame:
-    def __init__(self, rows: dict[object, dict[str, object]]) -> None:
-        self._rows = rows
-
-    @property
-    def empty(self) -> bool:
-        return not self._rows
-
-    @property
-    def index(self) -> _FakeFrameIndex:
-        return _FakeFrameIndex(tuple(self._rows))
-
-    @property
-    def at(self) -> _FakeFrameAtAccessor:
-        return _FakeFrameAtAccessor(self._rows)
-
-    def sort_index(self) -> _FakeDataFrame:
-        return _FakeDataFrame(dict(sorted(self._rows.items(), key=lambda item: str(item[0]))))
 
 
 def _load_snapshot(name: str) -> dict[str, object]:
@@ -117,73 +81,70 @@ def _serialize(value: object) -> object:
     return value
 
 
-def _frame_from_payload(payload: object) -> _FakeDataFrame:
-    mapping = cast(dict[str, object], payload)
-    raw_rows = cast(list[dict[str, object]], mapping["rows"])
-    rows: dict[object, dict[str, object]] = {}
-    for raw_row in raw_rows:
-        rows[datetime.fromisoformat(str(raw_row["index"]))] = cast(
-            dict[str, object], raw_row["values"]
-        )
-    return _FakeDataFrame(rows)
-
-
-def _extract_ohlcv_payload(payload: object) -> object:
-    if isinstance(payload, Mapping):
-        mapping = cast(Mapping[str, object], payload)
-        ohlcv_payload = mapping.get("ohlcv")
-        if ohlcv_payload is not None:
-            return ohlcv_payload
-        return dict(mapping)
-    return payload
-
-
 def _extract_ecos_records(payload: object) -> tuple[Mapping[str, object], ...]:
     mapping = cast(Mapping[str, object], payload)
     statistic_search = cast(Mapping[str, object], mapping["StatisticSearch"])
     return tuple(cast(list[Mapping[str, object]], statistic_search.get("row", [])))
 
 
-class _ParityPykrxStockApi:
-    def __init__(self, payload: dict[str, object]) -> None:
-        self._payload = payload
+def _krx_row_date(raw_row: Mapping[str, object]) -> str:
+    return str(raw_row["index"])[:10]
 
-    def get_index_ohlcv_by_date(
-        self,
-        fromdate: str,
-        todate: str,
-        ticker: str,
-        freq: str = "d",
-        name_display: bool = True,
-    ) -> _FakeDataFrame:
-        del fromdate, todate, ticker, freq, name_display
-        return _frame_from_payload(_extract_ohlcv_payload(self._payload["raw"]))
 
-    def get_market_trading_value_by_date(
-        self,
-        fromdate: str,
-        todate: str,
-        ticker: str,
-        etf: bool = False,
-        etn: bool = False,
-        elw: bool = False,
-        on: str = "순매수",
-        detail: bool = False,
-        freq: str = "d",
-    ) -> _FakeDataFrame:
-        del fromdate, todate, ticker, etf, etn, elw, on, detail, freq
-        return _frame_from_payload(self._payload["raw"])
+def _extract_krx_kospi_items(snapshot: dict[str, object]) -> tuple[Mapping[str, object], ...]:
+    raw = cast(Mapping[str, object], snapshot["raw"])
+    rows_payload = raw.get("ohlcv", raw)
+    raw_rows = cast(list[Mapping[str, object]], cast(Mapping[str, object], rows_payload)["rows"])
+    return tuple(
+        {
+            "date": _krx_row_date(raw_row),
+            "open": cast(Mapping[str, object], raw_row["values"])["시가"],
+            "high": cast(Mapping[str, object], raw_row["values"])["고가"],
+            "low": cast(Mapping[str, object], raw_row["values"])["저가"],
+            "close": cast(Mapping[str, object], raw_row["values"])["종가"],
+            "volume": cast(Mapping[str, object], raw_row["values"])["거래량"],
+            "trading_value": cast(Mapping[str, object], raw_row["values"])["거래대금"],
+            "market_cap": cast(Mapping[str, object], raw_row["values"])["상장시가총액"],
+        }
+        for raw_row in raw_rows
+    )
 
-    def get_index_fundamental_by_date(
-        self,
-        fromdate: str,
-        todate: str,
-        ticker: str,
-        prev: bool = True,
-    ) -> _FakeDataFrame:
-        del fromdate, todate, ticker, prev
-        raw = cast(dict[str, object], self._payload["raw"])
-        return _frame_from_payload(raw["fundamental"])
+
+def _extract_krx_investor_items(snapshot: dict[str, object]) -> tuple[Mapping[str, object], ...]:
+    raw = cast(Mapping[str, object], snapshot["raw"])
+    raw_rows = cast(list[Mapping[str, object]], raw["rows"])
+    labels = (
+        ("개인", "개인"),
+        ("외국인합계", "외국인"),
+        ("기관합계", "기관"),
+    )
+    return tuple(
+        {
+            "date": _krx_row_date(raw_row),
+            "market": "KOSPI",
+            "investor_type": investor_type,
+            "net_value": cast(Mapping[str, object], raw_row["values"])[column_name],
+        }
+        for raw_row in raw_rows
+        for column_name, investor_type in labels
+    )
+
+
+def _extract_krx_market_valuation_items(
+    snapshot: dict[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    raw = cast(Mapping[str, object], snapshot["raw"])
+    fundamental = cast(Mapping[str, object], raw["fundamental"])
+    raw_rows = cast(list[Mapping[str, object]], fundamental["rows"])
+    return tuple(
+        {
+            "date": _krx_row_date(raw_row),
+            "market": "KOSPI",
+            "per": cast(Mapping[str, object], raw_row["values"])["PER"],
+            "pbr": cast(Mapping[str, object], raw_row["values"])["PBR"],
+        }
+        for raw_row in raw_rows
+    )
 
 
 def _fetch_ecos_rows(snapshot_name: str, fetcher_name: str) -> list[object]:
@@ -223,10 +184,25 @@ def _fetch_kosis_rows(snapshot_name: str) -> list[object]:
 def _fetch_krx_rows(snapshot_name: str, fetcher_name: str) -> list[object]:
     snapshot = _load_snapshot(snapshot_name)
     start, end = _load_window(snapshot)
-    connector = PykrxKrxConnector(
-        stock_api=_ParityPykrxStockApi(snapshot),
-        clock=lambda: FETCHED_AT,
+    datasets: dict[str, _FakeDataset] = {
+        "krx.kospi_index": _FakeDataset(()),
+        "krx.investor_flow": _FakeDataset(()),
+        "krx.market_valuation": _FakeDataset(()),
+    }
+    if fetcher_name == "fetch_kospi_index":
+        datasets["krx.kospi_index"] = _FakeDataset(_extract_krx_kospi_items(snapshot))
+    elif fetcher_name == "fetch_investor_flow":
+        datasets["krx.investor_flow"] = _FakeDataset(_extract_krx_investor_items(snapshot))
+    else:
+        datasets["krx.kospi_index"] = _FakeDataset(_extract_krx_kospi_items(snapshot))
+        datasets["krx.market_valuation"] = _FakeDataset(
+            _extract_krx_market_valuation_items(snapshot)
+        )
+    client = _FakeClient(
+        provider="krx",
+        datasets=datasets,
     )
+    connector = PykrxKrxConnector(client=cast(Client, client), clock=lambda: FETCHED_AT)
     return cast(list[object], list(getattr(connector, fetcher_name)(start, end)))
 
 
@@ -255,7 +231,7 @@ def test_v02_ecos_parity_snapshots_match_live_connector_normalization(
         ("krx_market_valuation.json", "fetch_market_valuation"),
     ],
 )
-def test_v02_krx_parity_snapshots_match_pykrx_connector_normalization(
+def test_v02_krx_parity_snapshots_match_live_connector_normalization(
     snapshot_name: str,
     fetcher_name: str,
 ) -> None:

@@ -4,8 +4,8 @@ from collections.abc import Mapping
 
 
 SOURCE_API_KEY_ENV_VARS: dict[str, str] = {
-    "ecos": "ECOS_API_KEY",
-    "kosis": "KOSIS_API_KEY",
+    "ecos": "KPUBDATA_BOK_API_KEY",
+    "kosis": "KPUBDATA_KOSIS_API_KEY",
 }
 
 
@@ -25,4 +25,4 @@ def resolve_live_api_key(
         return from_environment
 
     source_name = source.upper()
-    raise ValueError(f"{source_name} API key is required via --api-key or {env_var_name}")
+    raise ValueError(f"{source_name} API key is required via {env_var_name}")

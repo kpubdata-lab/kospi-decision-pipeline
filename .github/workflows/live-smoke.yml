@@ -22,8 +22,8 @@ jobs:
       VISUAL: ""
       GIT_PAGER: cat
       PAGER: cat
-      ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
-      KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY }}
+      KPUBDATA_BOK_API_KEY: ${{ secrets.KPUBDATA_BOK_API_KEY }}
+      KPUBDATA_KOSIS_API_KEY: ${{ secrets.KPUBDATA_KOSIS_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -283,8 +283,8 @@ jobs:
               --folds-config "${fixture_runtime}/config/folds.yaml"
           }
 
-          if [[ -z "${ECOS_API_KEY:-}" ]]; then
-            echo "::warning title=Live smoke skipped::ECOS_API_KEY is not configured. Running pure-fixture CLI smoke instead."
+          if [[ -z "${KPUBDATA_BOK_API_KEY:-}" ]]; then
+            echo "::warning title=Live smoke skipped::KPUBDATA_BOK_API_KEY is not configured. Running pure-fixture CLI smoke instead."
             run_fixture_smoke
             exit 0
           fi
@@ -315,15 +315,15 @@ jobs:
           uv run --python 3.12 kospi-pipeline ingest --live --source krx --dataset market_valuation --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
 
           header "Live ingest: ECOS"
-          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_rate --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
-          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset usd_krw --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
-          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset bond_yield --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${ECOS_API_KEY}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset base_rate --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset usd_krw --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
+          uv run --python 3.12 kospi-pipeline ingest --live --source ecos --dataset bond_yield --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
 
-          if [[ -n "${KOSIS_API_KEY:-}" ]]; then
+          if [[ -n "${KPUBDATA_KOSIS_API_KEY:-}" ]]; then
             header "Live ingest: KOSIS bronze-only"
-            uv run --python 3.12 kospi-pipeline ingest --live --source kosis --dataset macro_indicators --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --api-key "${KOSIS_API_KEY}" --out "${BRONZE_ROOT}"
+            uv run --python 3.12 kospi-pipeline ingest --live --source kosis --dataset macro_indicators --from "${LIVE_START}" --to "${LIVE_END}" --snapshot-id "${SNAPSHOT_ID}" --out "${BRONZE_ROOT}"
           else
-            echo "::warning title=KOSIS skipped::KOSIS_API_KEY is not configured. Skipping bronze-only KOSIS ingest for this run."
+            echo "::warning title=KOSIS skipped::KPUBDATA_KOSIS_API_KEY is not configured. Skipping bronze-only KOSIS ingest for this run."
           fi
 
           header "Build silver and gold"

@@ -123,6 +123,18 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bb/63/f9e1ea081ce35720d8b92acde70daaedace594dc93b693c869e0d5910718/click-8.3.3.tar.gz", hash = "sha256:398329ad4837b2ff7cbe1dd166a4c0f8900c3ca3a218de04466f38f6497f18a2", size = 328061, upload-time = "2026-04-22T15:11:27.506Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/44/c1221527f6a71a01ec6fbad7fa78f1d50dfa02217385cf0fa3eec7087d59/click-8.3.3-py3-none-any.whl", hash = "sha256:a2bf429bb3033c89fa4936ffb35d5cb471e3719e1f3c8a7c3fff0b8314305613", size = 110502, upload-time = "2026-04-22T15:11:25.044Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -503,12 +515,12 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "abdp" },
+    { name = "click" },
     { name = "httpx" },
-    { name = "kpubdata" },
+    { name = "kpubdata", extra = ["krx"] },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pydantic" },
-    { name = "pykrx" },
     { name = "pyyaml" },
     { name = "setuptools" },
 ]
@@ -531,14 +543,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "abdp", git = "https://github.com/yeongseon/agent-based-decision-pipeline.git?rev=9520cfed7e150f644fb5d01bb1a9b32eb0082f8d" },
+    { name = "click", specifier = ">=8" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "kpubdata", specifier = ">=0" },
+    { name = "kpubdata", extras = ["krx"], specifier = ">=0.5.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pandas" },
     { name = "pandas-stubs", marker = "extra == 'dev'" },
     { name = "pyarrow" },
     { name = "pydantic", specifier = ">=2" },
-    { name = "pykrx", specifier = ">=1.0.51" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5" },
     { name = "pyyaml" },
@@ -553,14 +565,19 @@ dev = [{ name = "pandas-stubs", specifier = ">=3.0.0.260204" }]
 
 [[package]]
 name = "kpubdata"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/00/53f4beec4770b7588c7df079cd0b1ecfe1ceedca2870cb4220296073604f/kpubdata-0.4.0.tar.gz", hash = "sha256:6cec6c30718597f371727ab3068184d45500c8323dd1942c1a33e6cad9c78d53", size = 335150, upload-time = "2026-04-23T15:12:55.109Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/58/2f0a8d1b4ec6cd8152f951ffc5849c64628b10a0ee81f890ea3c97ba8fda/kpubdata-0.5.0.tar.gz", hash = "sha256:89e9b60afdc4c2f129b17207dc16c8531fbfdd1d7ef2048e4a1e0282c24c4905", size = 434771, upload-time = "2026-04-27T15:36:01.894Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/0e/2c6b8c03bee28335dd1da7f4be268dfe0120cb21210a51612e0147f5f677/kpubdata-0.4.0-py3-none-any.whl", hash = "sha256:6dfd7bcaab5dc991a25990b7db7fb9fd3686150c82a13da77e16d14a98975702", size = 89421, upload-time = "2026-04-23T15:12:53.421Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/88/47574191c71ca22a840cfde858854f908c62f3b0609a2c8a98b554b96b65/kpubdata-0.5.0-py3-none-any.whl", hash = "sha256:e0c5d49bdd6abd5a4138f2d3945bd39ff0c3db926f6050ad17a009854192cf67", size = 104145, upload-time = "2026-04-27T15:36:00.024Z" },
+]
+
+[package.optional-dependencies]
+krx = [
+    { name = "pykrx" },
 ]
 
 [[package]]

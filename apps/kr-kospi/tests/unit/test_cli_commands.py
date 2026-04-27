@@ -241,7 +241,6 @@ def test_cli_main_runs_fixture_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
         "output_dir": "tmp/bronze",
         "live": False,
         "snapshot_id": None,
-        "api_key": None,
     }
 
 
@@ -280,7 +279,7 @@ def test_cli_main_enables_live_mode_with_flag(monkeypatch: pytest.MonkeyPatch) -
     assert captured["snapshot_id"] == "snapshot-20240115T000000Z"
 
 
-def test_cli_main_routes_live_snapshot_id_and_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_main_routes_live_snapshot_id(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_ingest_command(**kwargs: object) -> int:
@@ -307,15 +306,12 @@ def test_cli_main_routes_live_snapshot_id_and_api_key(monkeypatch: pytest.Monkey
                 "2024-01-04",
                 "--snapshot-id",
                 "snapshot-20240115T000000Z",
-                "--api-key",
-                "cli-key",
             ]
         )
         == 0
     )
     assert captured["live"] is True
     assert captured["snapshot_id"] == "snapshot-20240115T000000Z"
-    assert captured["api_key"] == "cli-key"
 
 
 def test_cli_main_enables_live_mode_with_env_var(monkeypatch: pytest.MonkeyPatch) -> None:

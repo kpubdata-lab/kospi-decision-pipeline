@@ -18,8 +18,8 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.ecos import (
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
-        os.getenv("ECOS_API_KEY") in {None, ""},
-        reason="set ECOS_API_KEY to run live ECOS tests",
+        os.getenv("KPUBDATA_BOK_API_KEY") in {None, ""},
+        reason="set KPUBDATA_BOK_API_KEY to run live ECOS tests",
     ),
 ]
 

@@ -12,16 +12,16 @@ def _env_var_name(provider: str) -> str:
     return f"KPUBDATA_{provider.upper()}_API_KEY"
 
 
-def _missing_providers() -> list[str]:
+def _missing_providers(required_providers: tuple[str, ...]) -> list[str]:
     missing: list[str] = []
-    for provider in REQUIRED_PROVIDERS:
+    for provider in required_providers:
         if not os.environ.get(_env_var_name(provider)):
             missing.append(provider)
     return missing
 
 
-def build_client() -> Client:
-    missing = _missing_providers()
+def build_client(*, required_providers: tuple[str, ...] = REQUIRED_PROVIDERS) -> Client:
+    missing = _missing_providers(required_providers)
     if missing:
         expected = ", ".join(_env_var_name(provider) for provider in missing)
         message = (

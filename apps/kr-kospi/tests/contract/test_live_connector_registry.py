@@ -8,10 +8,15 @@ from kospi_decision_pipeline_app_kr_kospi.connectors.registry import LiveConnect
 def test_live_connector_registry_builds_client_for_krx(monkeypatch: pytest.MonkeyPatch) -> None:
     built_client = object()
     observed: dict[str, object] = {}
+    build_client_calls: list[tuple[str, ...]] = []
+
+    def _fake_build_client(*, required_providers: tuple[str, ...] = ()) -> object:
+        build_client_calls.append(required_providers)
+        return built_client
 
     monkeypatch.setattr(
         "kospi_decision_pipeline_app_kr_kospi.connectors.registry.client_factory.build_client",
-        lambda: built_client,
+        _fake_build_client,
     )
 
     class _FakeKrxConnector:
@@ -29,6 +34,7 @@ def test_live_connector_registry_builds_client_for_krx(monkeypatch: pytest.Monke
 
     assert isinstance(connector, _FakeKrxConnector)
     assert observed == {"client": built_client}
+    assert build_client_calls == [()]
 
 
 def test_live_connector_registry_builds_client_for_ecos(monkeypatch: pytest.MonkeyPatch) -> None:

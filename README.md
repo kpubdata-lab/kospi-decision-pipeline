@@ -16,10 +16,11 @@ Public-data-first ABDP-based KOSPI next-day direction prediction pipeline for re
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green)
 
-- Release target: **v0.2**
+- Release target: **v0.3.0**
 - Project posture: **research-grade, deterministic, public-data-first**
-- Out of scope for v0.2: S&P 500, real-time FX, broker reports, individual stocks, production trading automation
-- KOSIS in v0.2: **bronze-only live ingest**; it is not part of the shipped Silver/Gold/runtime path unless a later cadence-normalization issue lands
+- Live ingest in v0.3: **all shipped live sources use `kpubdata.Client`**
+- Out of scope for v0.3: S&P 500, real-time FX, broker reports, individual stocks, production trading automation
+- KOSIS in v0.3: **bronze-only live ingest**; it is not part of the shipped Silver/Gold/runtime path unless a later cadence-normalization issue lands
 
 ## Architecture overview
 
@@ -60,8 +61,9 @@ TechnicalAgent   DomesticMacroAgent   FlowAgent   ValuationAgent   VolatilityAge
 - Python 3.12+
 - `uv`
 - Fixture-backed local runs for documentation and CI-style dry runs
-- `KPUBDATA_BOK_API_KEY` for live ECOS ingest; `KPUBDATA_KOSIS_API_KEY` only if you want the optional bronze-only KOSIS live ingest in v0.2
-- KRX live smoke does not require a repository secret, but the scheduled GitHub Actions workflow falls back to fixture smoke when required live secrets are absent
+- `KPUBDATA_BOK_API_KEY` for live ECOS ingest
+- `KPUBDATA_KOSIS_API_KEY` only if you want optional bronze-only KOSIS live ingest in v0.3
+- KRX is authless in v0.3; `kpubdata[krx]>=0.5.0,<0.6.0` supplies the live KRX adapter surface without a repository secret
 
 Environment variables typically used for live runs depend on the upstream data client configuration. For safe automation, export the non-interactive shell settings used in CI:
 
@@ -76,12 +78,14 @@ Live-mode variables documented in `.env.example`:
 ```bash
 KPUBDATA_BOK_API_KEY=
 KPUBDATA_KOSIS_API_KEY=
+KPUBDATA_KRX_INTEGRATION=0
 KOSPI_PIPELINE_LIVE_ECOS=0
 KOSPI_PIPELINE_LIVE_KRX=0
 ```
 
 - `KPUBDATA_BOK_API_KEY` is required for live ECOS bronze ingest.
-- `KPUBDATA_KOSIS_API_KEY` is optional and only used for bronze-only KOSIS ingest in v0.2.
+- `KPUBDATA_KOSIS_API_KEY` is optional and only used for bronze-only KOSIS ingest in v0.3.
+- `KPUBDATA_KRX_INTEGRATION=1` opt-ins the authless KRX integration checks that exercise the `kpubdata` KRX adapter surface.
 - `KOSPI_PIPELINE_LIVE_ECOS=1` and `KOSPI_PIPELINE_LIVE_KRX=1` opt into the guarded live pytest smoke cases.
 
 ### Install
@@ -89,6 +93,8 @@ KOSPI_PIPELINE_LIVE_KRX=0
 ```bash
 uv sync --extra dev
 ```
+
+The repository's live-ingest dependency target for v0.3 is `kpubdata[krx]>=0.5.0,<0.6.0`.
 
 ### Smoke-check the shipped command surface
 
@@ -105,7 +111,7 @@ uv run --python 3.12 python -c "from kospi_decision_pipeline_app_kr_kospi.transf
 
 ### Live-mode snapshot example
 
-The shipped CLI implements `ingest`, `build-features`, `run`, `run-scenario`, and `run-backtest`. The backtest dataset builder is already implemented in Python (`transforms.target_labels.build_backtest_dataset`) but is not yet wired as a dedicated CLI subcommand in `cli.py`, so the live-smoke workflow and local runbook use the shipped library entry point for that step.
+The shipped CLI implements `ingest`, `build-features`, `run`, `run-scenario`, and `run-backtest`. In v0.3 every live `ingest --live` path resolves connectors through `LiveConnectorRegistry`, which builds a shared `kpubdata.Client` via `Client.from_env()` rather than per-command API-key flags. The backtest dataset builder is already implemented in Python (`transforms.target_labels.build_backtest_dataset`) but is not yet wired as a dedicated CLI subcommand in `cli.py`, so the live-smoke workflow and local runbook use the shipped library entry point for that step.
 
 Important constraints before running the full pipeline:
 
@@ -116,7 +122,8 @@ Important constraints before running the full pipeline:
 
 ```bash
 export KPUBDATA_BOK_API_KEY="your-bok-key"
-export KPUBDATA_KOSIS_API_KEY="your-kosis-key" # optional; KOSIS is bronze-only in v0.2
+export KPUBDATA_KOSIS_API_KEY="your-kosis-key" # optional; KOSIS is bronze-only in v0.3
+export KPUBDATA_KRX_INTEGRATION=1               # optional; enables authless KRX integration checks
 SNAPSHOT_ID="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
 LIVE_FROM="2024-01-01"
 LIVE_TO="2025-03-31"
@@ -178,7 +185,7 @@ uv run --python 3.12 kospi-pipeline ingest \
   --snapshot-id "$SNAPSHOT_ID" \
   --out data/bronze
 
-# Optional bronze-only KOSIS ingest in v0.2. This does not feed Gold/runtime yet.
+# Optional bronze-only KOSIS ingest in v0.3. This does not feed Gold/runtime yet.
 uv run --python 3.12 kospi-pipeline ingest \
   --live \
   --source kosis \
@@ -225,7 +232,8 @@ uv run --python 3.12 kospi-pipeline run-backtest \
 
 - GitHub Actions workflow: `.github/workflows/live-smoke.yml`
 - `KPUBDATA_BOK_API_KEY` is required for the full live path.
-- `KPUBDATA_KOSIS_API_KEY` is optional and only enables the bronze-only KOSIS ingest path in v0.2.
+- `KPUBDATA_KOSIS_API_KEY` is optional and only enables the bronze-only KOSIS ingest path in v0.3.
+- KRX is authless; no KRX API secret is required for CLI live ingest.
 - When `KPUBDATA_BOK_API_KEY` is missing, the workflow prints a warning and falls back to fixture-backed CLI smoke (`ingest`, `build-features`, `run`, `run-backtest`) instead of failing silently.
 - When `KPUBDATA_KOSIS_API_KEY` is missing, the workflow still runs KRX + ECOS + Silver/Gold + runtime smoke and prints that KOSIS was skipped.
 - The acceptance text may say `backtest` informally, but the shipped CLI command used by the workflow is `run-backtest`.
@@ -251,7 +259,7 @@ uv run --python 3.12 kospi-pipeline run-backtest \
 | `run` | implemented | Run decisions over the latest Gold snapshot row |
 | `run-scenario` | implemented | ABDP scenario execution |
 | `run-backtest` | implemented | Walk-forward reports |
-| `build-backtest-dataset` | not yet exposed as CLI | Use `build_backtest_dataset(...)` from Python for v0.2 |
+| `build-backtest-dataset` | not yet exposed as CLI | Use `build_backtest_dataset(...)` from Python for v0.3 |
 | `backtest` | stubbed | Placeholder only; use `run-backtest` |
 
 ## Configuration reference
@@ -274,7 +282,7 @@ The scenario file defines the runtime envelope used by `run-scenario` and `run-b
 | Key | Current committed value | Meaning |
 | --- | --- | --- |
 | `scenario_id` | `kospi.next_day` | Scenario namespace for decision artifacts |
-| `horizon` | `next_day` | Fixed v0.2 horizon |
+| `horizon` | `next_day` | Fixed v0.3 horizon |
 | `agents` | `technical`, `domestic_macro`, `flow`, `valuation`, `volatility`, `decision` | ABDP participant order |
 | `runtime.agents_config_path` | `apps/kr-kospi/config/agents.yaml` | Agent config source |
 | `runtime.features_path` | `data/gold/features.parquet` | Default runtime features path in committed YAML |
@@ -351,7 +359,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for Oracle review workflow, branch naming
 
 ## Design contract
 
-The normative release contract lives in [docs/spec.md](docs/spec.md). That document still captures the binding v0.1 rules/runtime baseline; the v0.2 operator additions in this README and [docs/operator.md](docs/operator.md) layer on top without changing the published rule contracts. ADR context begins with [docs/adr/001-project-foundation.md](docs/adr/001-project-foundation.md).
+The normative release contract lives in [docs/spec.md](docs/spec.md). That document still captures the binding v0.1 rules/runtime baseline; the v0.3 live-ingest migration notes in this README and [docs/operator.md](docs/operator.md) layer on top without changing the published rule contracts. ADR context begins with [docs/adr/001-project-foundation.md](docs/adr/001-project-foundation.md) and [docs/adr/014-kpubdata-client-migration.md](docs/adr/014-kpubdata-client-migration.md).
 
 ## ABDP attribution
 
